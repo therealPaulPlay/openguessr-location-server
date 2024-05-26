@@ -85,7 +85,7 @@ async function generateRandomStreetViewLocation() {
                     try {
                         const location = await getCoordsFromGoogle();
                         const textElement = document.createElement('h2');
-                        textElement.textContent = location;
+                        textElement.textContent = location || "null"; // Set text to null if location is null
                         textElement.id = 'resultText';
                         document.body.appendChild(textElement);
                     } catch (error) {
@@ -96,11 +96,16 @@ async function generateRandomStreetViewLocation() {
             </script>
         `);
 
-        await page.waitForSelector('#resultText'); // Wait for the text element to appear on the page
+        await page.waitForSelector('#resultText'); // Wait for the text element to appear on the page (has a 30s timeout limit, if that is reached it will trigger an error that is being caught below)
 
         const locationHandle = await page.evaluateHandle(() => document.getElementById("resultText").textContent);
-        const location = await locationHandle.jsonValue();
-        return location.split(',').map(Number); //convert the string "lat, long" in two individual numbers
+        let location = await locationHandle.jsonValue();
+        if (location === "null") { // Check if location is null
+            location = null;
+        } else {
+            location = location.split(',').map(Number); // Convert the string "lat, long" to two individual numbers
+        }
+        return location;
         
     } catch (error) {
         console.error("Error: " + error);
@@ -112,20 +117,30 @@ async function generateRandomStreetViewLocation() {
 
 async function updateLocations() {
     while (true) {
-        const location = await generateRandomStreetViewLocation();
-        if (location) {
-            if (locations.length < locationLimit) {
-                locations.push(location);
-                currentIndex = locations.length - 1;
+        try {
+            const location = await generateRandomStreetViewLocation();
+            if (location !== null) {
+                if (locations.length < locationLimit) {
+                    locations.push(location);
+                    currentIndex = locations.length - 1;
+                } else {
+                    locations[currentIndex] = location;
+                    currentIndex = (currentIndex + 1) % locationLimit;
+                }
+                parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
+                saveLocationsToFile(); // Save the array to disk periodically
             } else {
-                locations[currentIndex] = location;
-                currentIndex = (currentIndex + 1) % locationLimit;
+                console.log("Google returned an error and location is null (or max retries reached). Retrying in 10 seconds...");
+                await new Promise(resolve => setTimeout(resolve, 10000)); // Wait for 10 seconds before retrying
             }
-            parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
-            saveLocationsToFile(); // Save the array to disk periodically
+        } catch (error) {
+            console.error("An error occurred while generating location:", error);
+            console.log("Retrying in 10 seconds...");
+            await new Promise(resolve => setTimeout(resolve, 10000)); // Wait for 10 seconds before retrying
         }
     }
 }
+
 
 function saveLocationsToFile() {
     fs.writeFileSync('locations.json', JSON.stringify(locations));
