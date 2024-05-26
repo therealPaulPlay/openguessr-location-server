@@ -8,4 +8,4 @@ locations to generate in server.js ```const locationLimit = Your preferred limit
 stop generating these locations, rather it will start updating them one by one when the maximum amount
 has been reached. 
 
-To retrieve the list of currently available, make a ```GET``` request to the ```/locations``` endpoint.
+To retrieve the list of currently available locations in json form, make a ```GET``` request to the ```/locations``` endpoint.
