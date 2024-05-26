@@ -6,17 +6,21 @@ const app = express();
 app.get('/randomStreetView', async (req, res) => {
     try {
         const location = await getRandomStreetViewLocation();
-        res.json({ location });
+        if (location === null) {
+            res.status(500).json({ error: "Failed to fetch random streetview location (Unknown error)" });
+        } else {
+            res.json({ location });
+        }
     } catch (error) {
-        console.error('Error fetching random street view location:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error("Error fetching random street view location: ", error);
+        res.status(500).json({ error: "Internal server error: " + error });
     }
 });
 
 async function getRandomStreetViewLocation() {
     const browser = await puppeteer.launch({
         args: ['--enable-logging'], // Enable logging
-        devtools: true // Enable DevTools protocol
+        devtools: false // Enable DevTools protocol
     });
     const page = await browser.newPage();
 
@@ -26,7 +30,7 @@ async function getRandomStreetViewLocation() {
             <body>
             <h1 id="text">coordinates (not yet loaded)</h1>
             </body>
-            <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCKhLpEuFjNeiOgwkttwQsaIcicDeoXeTg&callback=initMap" async defer></script>
+            <script src="https://maps.googleapis.com/maps/api/js?callback=initMap" async defer></script>
             <script>
                 window.initMap = async () => {
                     await executeScript();
@@ -68,7 +72,6 @@ async function getRandomStreetViewLocation() {
                                 return await getCoordsFromGoogle(retryCount + 1);
                             } else {
                                 console.error("Maximum retry limit reached.");
-                                errorPopup("No location found.", "Reload the page or switch to a different category", "Google SDK failed to find a location", false);
                                 return null;
                             }
                         } else {
@@ -87,28 +90,30 @@ async function getRandomStreetViewLocation() {
                 }
 
                 async function executeScript() {
-                    getCoordsFromGoogle().then(location => {
-                        document.getElementById("text").textContent = location;
-                    }).catch(error => {
+                    try {
+                        const location = await getCoordsFromGoogle();
+                        const textElement = document.createElement('h2');
+                        textElement.textContent = location;
+                        textElement.id = 'resultText';
+                        document.body.appendChild(textElement);
+                    } catch (error) {
                         console.error("Error getting coordinates in execute script:", error);
-                        document.getElementById("text").textContent = "Error: " + error;
-                    });
+                    }
                 }
 
             </script>
         `);
 
-        await page.waitForSelector('#text'); // Wait for the text element to appear on the page
+        await page.waitForSelector('#resultText'); // Wait for the text element to appear on the page
 
-        const locationHandle = await page.evaluateHandle(() => document.getElementById("text").textContent);
+        const locationHandle = await page.evaluateHandle(() => document.getElementById("resultText").textContent);
         const location = await locationHandle.jsonValue();
 
         return location;
         
-    } finally {
-        setTimeout(()=>{
-            browser.close();
-        }, 200000)
+    } catch (error) {
+        console.error("Error: " + error);
+        throw new Error("Error in the puppeteer page: " + error);
     }
 }
 
