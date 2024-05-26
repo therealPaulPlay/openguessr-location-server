@@ -42,9 +42,9 @@ async function getRandomStreetViewLocation() {
                     return new Promise((resolve, reject) => {
                         streetViewService.getPanorama({
                             location: { lat: latitude, lng: longitude },
-                            preference: google.maps.StreetViewPreference.BEST,
+                            preference: google.maps.StreetViewPreference.NEAREST, //formerly best, now nearest to avoid repetition
                             radius: radius,
-                            sources: [google.maps.StreetViewSource.OUTDOOR]
+                            sources: [google.maps.StreetViewSource.GOOGLE] //changed from OUTDOOR to google to reject unofficial
                         }, (data, status) => {
                             if (status === "OK") {
                                 const location = data.location.latLng;
