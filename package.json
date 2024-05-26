@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "@googlemaps/js-api-loader": "^1.16.6",
     "express": "^4.19.2",
     "fs": "^0.0.1-security",
     "puppeteer": "^22.10.0"
