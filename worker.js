@@ -10,15 +10,16 @@ let locations = workerData.locations;
 let currentIndex = workerData.currentIndex;
 
 async function generateRandomStreetViewLocation() {
-    const browser = await puppeteer.launch({
-        executablePath: '/usr/bin/chromium', // Browser path for docker image
-        args: ['--no-sandbox', '--disable-setuid-sandbox'], // Required for running in many Docker environments
-        headless: true, // Run in headless mode
-        devtools: false // Disable DevTools protocol
-    });
-    const page = await browser.newPage();
-
+    let browser; // Declare browser variable outside of try block
     try {
+        browser = await puppeteer.launch({
+            executablePath: '/usr/bin/chromium', // Browser path for docker image
+            args: ['--no-sandbox', '--disable-setuid-sandbox'], // Required for running in many Docker environments
+            headless: true, // Run in headless mode
+            devtools: false // Disable DevTools protocol
+        });
+        const page = await browser.newPage();
+
         await page.goto('about:blank');
         await page.setContent(`
             <body>
@@ -50,7 +51,7 @@ async function generateRandomStreetViewLocation() {
                         });
                     });
                 }
- 
+
                 async function getCoordsFromGoogle(retryCount = 0) {
                     const { lat, lng } = getRandomSphericalCoordinates();
                     const searchRadius = 50000; // Adjust radius as needed
@@ -108,29 +109,31 @@ async function generateRandomStreetViewLocation() {
             location = location.split(',').map(Number); // Convert the string "lat, long" to two individual numbers
         }
         return location;
-        
+
     } catch (error) {
         console.error("Error: " + error);
         throw new Error("Error in the puppeteer page: " + error);
     } finally {
-        await browser.close();
+        if (browser) {
+            await browser.close(); // Ensure the browser is closed in the finally block
+        }
     }
 }
 
 async function updateLocations() {
-    while (true) { //endless loop
+    while (true) { // Endless loop
         try {
             const location = await generateRandomStreetViewLocation();
             if (location !== null) {
                 if (locations.length < locationLimit) {
-                    //generate new locations to extend the list
+                    // Generate new locations to extend the list
                     locations.push(location);
                     currentIndex = locations.length - 1;
                 } else {
-                    //update existing locations
+                    // Update existing locations
                     locations[currentIndex] = location;
                     currentIndex = (currentIndex + 1) % locationLimit;
-                    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 6) * 1000 )); //wait 0 - 5 seconds in between updating the locations
+                    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 6) * 1000)); // Wait 0 - 5 seconds in between updating the locations
                 }
                 parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
                 saveLocationsToFile(); // Save the array to disk periodically
