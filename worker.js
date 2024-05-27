@@ -116,16 +116,19 @@ async function generateRandomStreetViewLocation() {
 }
 
 async function updateLocations() {
-    while (true) {
+    while (true) { //endless loop
         try {
             const location = await generateRandomStreetViewLocation();
             if (location !== null) {
                 if (locations.length < locationLimit) {
+                    //generate new locations to extend the list
                     locations.push(location);
                     currentIndex = locations.length - 1;
                 } else {
+                    //update existing locations
                     locations[currentIndex] = location;
                     currentIndex = (currentIndex + 1) % locationLimit;
+                    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 6) * 1000 )); //wait 0 - 5 seconds in between updating the locations
                 }
                 parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
                 saveLocationsToFile(); // Save the array to disk periodically
@@ -140,7 +143,6 @@ async function updateLocations() {
         }
     }
 }
-
 
 function saveLocationsToFile() {
     fs.writeFileSync('locations.json', JSON.stringify(locations));

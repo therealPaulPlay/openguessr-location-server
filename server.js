@@ -4,7 +4,7 @@ const fs = require('fs');
 
 const app = express();
 
-const locationLimit = 2000; //The max amount of locations. 2000 is recommended
+const locationLimit = 10; //The max amount of locations. 2000 is recommended
 
 // Function to load locations from disk
 function loadLocationsFromFile() {
