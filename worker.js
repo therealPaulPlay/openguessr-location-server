@@ -11,7 +11,9 @@ let currentIndex = workerData.currentIndex;
 
 async function generateRandomStreetViewLocation() {
     const browser = await puppeteer.launch({
-        args: ['--enable-logging'], // Enable logging
+        executablePath: '/usr/bin/chromium', // Browser path for docker image
+        args: ['--no-sandbox', '--disable-setuid-sandbox'], // Required for running in many Docker environments
+        headless: true, // Run in headless mode
         devtools: false // Disable DevTools protocol
     });
     const page = await browser.newPage();
