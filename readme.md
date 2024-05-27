@@ -9,3 +9,6 @@ stop generating these locations, rather it will start updating them one by one w
 has been reached. 
 
 To retrieve the list of currently available locations in json form, make a ```GET``` request to the ```/locations``` endpoint.
+
+To build with docker, run ```docker build -t location-server .```. You can then save the image 
+using ```docker save -o image.tar location-server:latest```.
