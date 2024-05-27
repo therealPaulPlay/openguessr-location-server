@@ -17,7 +17,7 @@ jobs:
           ssh-keyscan -H ${{ secrets.SSH_HOST }} > ~/.ssh/known_hosts
 
       - name: connect, pull changes, build and deploy docker image
-        run: ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd ${{ secrets.WORK_DIR }} && git checkout ${{ secrets.MAIN_BRANCH }} && git pull && docker build -t openguessrlocationgenerator . && docker stop openguessrlocationgenerator && docker rm openguessrlocationgenerator && docker run -d -p 8080:8080 --network host --name openguessrlocationgenerator openguessrlocationgenerator && exit"
+        run: ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd ${{ secrets.WORK_DIR }} && git checkout ${{ secrets.MAIN_BRANCH }} && git pull && docker build -t openguessrlocationgenerator . && docker stop openguessrlocationgenerator && docker rm openguessrlocationgenerator && docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator && exit"
 
       - name: cleanup ssh
         run: rm -rf ~/.ssh
