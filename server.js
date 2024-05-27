@@ -1,10 +1,22 @@
 const express = require('express');
+const cors = require('cors');
+
 const { Worker } = require('worker_threads');
 const fs = require('fs');
 
 const app = express();
 
 const locationLimit = 2000; //The max amount of locations. 2000 is recommended
+
+//Cors config ---------------------------------------------------------------------------------
+app.use(cors());
+
+app.use(cors({
+    origin: ["http://localhost:3001", "http://localhost:3001", "/\.openguessr\.com$/", "https://openguessr.com", "https://openguessr.netlify.app", "https://og-venatus-test.netlify.app"]
+}));
+
+
+//Load and save locations ------------------------------------------------------------------------
 
 // Function to load locations from disk
 function loadLocationsFromFile() {
@@ -26,6 +38,7 @@ app.get('/locations', (req, res) => {
     }
 });
 
+//Web Worker ----------------------------------------------------------------------------------------------------------------------
 const worker = new Worker('./worker.js', {
     workerData: { locations, currentIndex, locationLimit } //pass the two variables as worker data, then pick them up in worker.js
 });
@@ -50,6 +63,8 @@ worker.on('exit', code => {
     }
 });
 
+
+//Start express app and configure port ------------------------------------------------------------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
