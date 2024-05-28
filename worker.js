@@ -1,10 +1,17 @@
 const { parentPort, workerData } = require('worker_threads');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
+const rimraf = require('rimraf'); // Import rimraf for directory cleanup
 
 const SOURCE = "OUTDOOR"; // The streetview source
 const PREFERENCE = "BEST"; // The streetview preference
 const locationLimit = workerData.locationLimit;
+const TEMP_DIR = '/tmp/puppeteer_temp'; // Custom temporary directory for Puppeteer
+
+// Ensure the custom temp directory exists
+if (!fs.existsSync(TEMP_DIR)) {
+    fs.mkdirSync(TEMP_DIR, { recursive: true });
+}
 
 let locations = workerData.locations;
 let currentIndex = workerData.currentIndex;
@@ -16,7 +23,8 @@ async function generateRandomStreetViewLocation() {
             executablePath: '/usr/bin/chromium', // Browser path for docker image
             args: ['--no-sandbox', '--disable-setuid-sandbox'], // Required for running in many Docker environments
             headless: true, // Run in headless mode
-            devtools: false // Disable DevTools protocol
+            devtools: false, // Disable DevTools protocol
+            userDataDir: TEMP_DIR // Set custom temp directory
         });
         const page = await browser.newPage();
 
@@ -120,6 +128,18 @@ async function generateRandomStreetViewLocation() {
     }
 }
 
+async function cleanUpTempDirectory() {
+    return new Promise((resolve, reject) => {
+        rimraf(TEMP_DIR, (error) => {
+            if (error) {
+                return reject(error);
+            }
+            fs.mkdirSync(TEMP_DIR, { recursive: true });
+            resolve();
+        });
+    });
+}
+
 async function updateLocations() {
     while (true) { // Endless loop
         try {
@@ -157,3 +177,13 @@ updateLocations().catch(error => {
     console.error("Worker encountered an error:", error);
     parentPort.postMessage({ status: 'error', error: error.message });
 });
+
+// Schedule periodic cleanup of the temporary directory every 10 minutes
+setInterval(async () => {
+    try {
+        await cleanUpTempDirectory();
+        console.log('Temporary directory cleaned up successfully.');
+    } catch (error) {
+        console.error('Error cleaning up temporary directory:', error);
+    }
+}, 600000); // 600000 ms = 10 minutes
