@@ -2,13 +2,16 @@ const { parentPort, workerData } = require('worker_threads');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const rimraf = require('rimraf'); // Import rimraf for directory cleanup
+const util = require('util');
+
+const rimrafPromise = util.promisify(rimraf); // Promisify rimraf for using with async/await
 
 const SOURCE = "OUTDOOR"; // The streetview source
 const PREFERENCE = "BEST"; // The streetview preference
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/puppeteer_temp'; // Custom temporary directory for Puppeteer
 
-// Ensure and endure the custom temp directory exists 
+// Ensure the custom temp directory exists
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
@@ -137,15 +140,12 @@ async function generateRandomStreetViewLocation() {
 }
 
 async function cleanUpTempDirectory() {
-    return new Promise((resolve, reject) => {
-        rimraf(TEMP_DIR, (error) => {
-            if (error) {
-                return reject(error);
-            }
-            fs.mkdirSync(TEMP_DIR, { recursive: true });
-            resolve();
-        });
-    });
+    try {
+        await rimrafPromise(TEMP_DIR);
+        fs.mkdirSync(TEMP_DIR, { recursive: true });
+    } catch (error) {
+        throw new Error(`Error cleaning up temporary directory: ${error.message}`);
+    }
 }
 
 async function updateLocations() {
