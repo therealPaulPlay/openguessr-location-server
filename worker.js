@@ -8,7 +8,7 @@ const PREFERENCE = "BEST"; // The streetview preference
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/puppeteer_temp'; // Custom temporary directory for Puppeteer
 
-// Ensure the custom temp directory exists
+// Ensure and endure the custom temp directory exists 
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
