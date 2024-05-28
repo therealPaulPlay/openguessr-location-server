@@ -3,8 +3,7 @@
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "fs": "^0.0.1-security",
-    "puppeteer": "^22.10.0",
-    "rimraf": "^5.0.7",
-    "util": "^0.12.5"
+    "path": "^0.12.7",
+    "puppeteer": "^22.10.0"
   }
 }

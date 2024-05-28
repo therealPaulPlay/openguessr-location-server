@@ -1,10 +1,7 @@
 const { parentPort, workerData } = require('worker_threads');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
-const rimraf = require('rimraf'); // Import rimraf for directory cleanup
-const util = require('util');
-
-const rimrafPromise = util.promisify(rimraf); // Promisify rimraf for using with async/await
+const path = require('path');
 
 const SOURCE = "OUTDOOR"; // The streetview source
 const PREFERENCE = "BEST"; // The streetview preference
@@ -140,11 +137,24 @@ async function generateRandomStreetViewLocation() {
 }
 
 async function cleanUpTempDirectory() {
+    async function deleteFolderRecursive(directoryPath) {
+        const entries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
+        await Promise.all(entries.map(async (entry) => {
+            const fullPath = path.join(directoryPath, entry.name);
+            if (entry.isDirectory()) {
+                await deleteFolderRecursive(fullPath);
+            } else {
+                await fs.promises.unlink(fullPath);
+            }
+        }));
+        await fs.promises.rmdir(directoryPath);
+    }
+
     try {
-        await rimrafPromise(TEMP_DIR);
-        fs.mkdirSync(TEMP_DIR, { recursive: true });
+        await deleteFolderRecursive(TEMP_DIR);
+        await fs.promises.mkdir(TEMP_DIR, { recursive: true });
     } catch (error) {
-        throw new Error(`Error cleaning up temporary directory: ${error.message}`);
+        throw new Error('Error cleaning up temporary directory: ' + error.message);
     }
 }
 
@@ -186,12 +196,13 @@ updateLocations().catch(error => {
     parentPort.postMessage({ status: 'error', error: error.message });
 });
 
-// Schedule periodic cleanup of the temporary directory every 10 minutes
+// Schedule periodic cleanup of the temporary directory every 2 minutes
 setInterval(async () => {
     try {
+        console.log('Starting cleanup of temporary directory...');
         await cleanUpTempDirectory();
         console.log('Temporary directory cleaned up successfully.');
     } catch (error) {
         console.error('Error cleaning up temporary directory:', error);
     }
-}, 600000); // 600000 ms = 10 minutes
+}, 120000); // 60 000 ms = 1 minute, 120 000 ms = 2 minutes
