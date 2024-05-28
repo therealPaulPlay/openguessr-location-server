@@ -6,7 +6,7 @@ const fs = require('fs');
 
 const app = express();
 
-const locationLimit = 2000; //The max amount of locations. 2000 is recommended
+const locationLimit = 1000; //The max amount of locations. 1000 is recommended
 
 //Cors config ---------------------------------------------------------------------------------
 app.use(cors());
