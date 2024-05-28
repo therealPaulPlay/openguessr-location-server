@@ -2,11 +2,19 @@ const { parentPort, workerData } = require('worker_threads');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { exec } = require('child_process');
 
 const SOURCE = "OUTDOOR"; // The streetview source
 const PREFERENCE = "BEST"; // The streetview preference
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/puppeteer_temp'; // Custom temporary directory for Puppeteer
+const BROWSER_TEMP_DIRS = [
+    '/tmp/chromium',
+    '/var/tmp',
+    '/usr/tmp',
+    '/dev/shm'
+];
 
 // Ensure the custom temp directory exists
 if (!fs.existsSync(TEMP_DIR)) {
@@ -16,38 +24,57 @@ if (!fs.existsSync(TEMP_DIR)) {
 let locations = workerData.locations;
 let currentIndex = workerData.currentIndex;
 
+async function launchBrowserWithRetries(retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await puppeteer.launch({
+                executablePath: '/usr/bin/chromium',
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--aggressive-cache-discard',
+                    '--disable-cache',
+                    '--disable-application-cache',
+                    '--disable-offline-load-stale-cache',
+                    '--disable-gpu-shader-disk-cache',
+                    '--media-cache-size=0',
+                    '--disk-cache-size=0',
+                    '--disable-extensions',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-default-apps',
+                    '--mute-audio',
+                    '--no-default-browser-check',
+                    '--autoplay-policy=user-gesture-required',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-notifications',
+                    '--disable-background-networking',
+                    '--disable-breakpad',
+                    '--disable-component-update',
+                    '--disable-domain-reliability',
+                    '--disable-sync',
+                    '--disable-gpu', // Disable GPU to save resources
+                    '--single-process', // Ensure single process usage
+                ],
+                headless: true,
+                devtools: false,
+                userDataDir: TEMP_DIR,
+                timeout: 60000 // Custom timeout
+            });
+        } catch (error) {
+            if (i === retries - 1) {
+                throw error;
+            }
+            console.error(`Failed to launch browser, retrying... (${i + 1}/${retries})`);
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Wait before retrying
+        }
+    }
+}
+
 async function generateRandomStreetViewLocation() {
-    let browser; // Declare browser variable outside of try block
+    let browser;
     try {
-        browser = await puppeteer.launch({
-            executablePath: '/usr/bin/chromium', // Browser path for docker image
-            args: ['--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--aggressive-cache-discard',
-                '--disable-cache',
-                '--disable-application-cache',
-                '--disable-offline-load-stale-cache',
-                '--disable-gpu-shader-disk-cache',
-                '--media-cache-size=0',
-                '--disk-cache-size=0',
-                '--disable-extensions',
-                '--disable-component-extensions-with-background-pages',
-                '--disable-default-apps',
-                '--mute-audio',
-                '--no-default-browser-check',
-                '--autoplay-policy=user-gesture-required',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-notifications',
-                '--disable-background-networking',
-                '--disable-breakpad',
-                '--disable-component-update',
-                '--disable-domain-reliability',
-                '--disable-sync',], // No sandbox is required for running in many Docker environments, rest is for reducing memory use
-            headless: true, // Run in headless mode
-            devtools: false, // Disable DevTools protocol
-            userDataDir: TEMP_DIR // Set custom temp directory
-        });
+        browser = await launchBrowserWithRetries();
         const page = await browser.newPage();
 
         await page.goto('about:blank');
@@ -87,12 +114,10 @@ async function generateRandomStreetViewLocation() {
                     const searchRadius = 50000; // Adjust radius as needed
 
                     try {
-                        // Attempt to get location data
                         const resultLocationsArray = await getLocationData(lat, lng, searchRadius);
                         return resultLocationsArray;
                     } catch (error) {
                         if (error === "ZERO_RESULTS") {
-                            // Retry if ZERO_RESULTS is returned
                             if (retryCount < 1000) {
                                 return await getCoordsFromGoogle(retryCount + 1);
                             } else {
@@ -118,7 +143,7 @@ async function generateRandomStreetViewLocation() {
                     try {
                         const location = await getCoordsFromGoogle();
                         const textElement = document.createElement('h2');
-                        textElement.textContent = location || "null"; // Set text to null if location is null
+                        textElement.textContent = location || "null";
                         textElement.id = 'resultText';
                         document.body.appendChild(textElement);
                     } catch (error) {
@@ -129,14 +154,14 @@ async function generateRandomStreetViewLocation() {
             </script>
         `);
 
-        await page.waitForSelector('#resultText'); // Wait for the text element to appear on the page (has a 30s timeout limit, if that is reached it will trigger an error that is being caught below)
+        await page.waitForSelector('#resultText');
 
         const locationHandle = await page.evaluateHandle(() => document.getElementById("resultText").textContent);
         let location = await locationHandle.jsonValue();
-        if (location === "null") { // Check if location is null
+        if (location === "null") {
             location = null;
         } else {
-            location = location.split(',').map(Number); // Convert the string "lat, long" to two individual numbers
+            location = location.split(',').map(Number);
         }
         return location;
 
@@ -145,11 +170,13 @@ async function generateRandomStreetViewLocation() {
         throw new Error("Error in the puppeteer page: " + error);
     } finally {
         if (browser) {
-            await browser.close(); // Ensure the browser is closed in the finally block
+            await browser.close();
         }
     }
 }
 
+
+//Cleanup many temp storage directories --------------------------------------------------------------------------------------------------------------
 async function cleanUpTempDirectory() {
     async function deleteFolderRecursive(directoryPath) {
         const entries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
@@ -167,36 +194,42 @@ async function cleanUpTempDirectory() {
     try {
         await deleteFolderRecursive(TEMP_DIR);
         await fs.promises.mkdir(TEMP_DIR, { recursive: true });
+
+        for (const dir of BROWSER_TEMP_DIRS) {
+            exec(`rm -rf ${dir}/*`, (err, stdout, stderr) => {
+                if (err) {
+                    console.error(`Error cleaning directory ${dir}: ${err.message}`);
+                }
+            });
+        }
     } catch (error) {
         throw new Error('Error cleaning up temporary directory: ' + error.message);
     }
 }
 
 async function updateLocations() {
-    while (true) { // Endless loop
+    while (true) {
         try {
             const location = await generateRandomStreetViewLocation();
             if (location !== null) {
                 if (locations.length < locationLimit) {
-                    // Generate new locations to extend the list
                     locations.push(location);
                     currentIndex = locations.length - 1;
                 } else {
-                    // Update existing locations
                     locations[currentIndex] = location;
                     currentIndex = (currentIndex + 1) % locationLimit;
-                    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 6) * 1000)); // Wait 0 - 5 seconds in between updating the locations
+                    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 6) * 1000));
                 }
                 parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
-                saveLocationsToFile(); // Save the array to disk periodically
+                saveLocationsToFile();
             } else {
                 console.log("Google returned an error and location is null (or max retries reached). Retrying in 10 seconds...");
-                await new Promise(resolve => setTimeout(resolve, 10000)); // Wait for 10 seconds before retrying
+                await new Promise(resolve => setTimeout(resolve, 10000));
             }
         } catch (error) {
             console.error("An error occurred while generating location:", error);
             console.log("Retrying in 10 seconds...");
-            await new Promise(resolve => setTimeout(resolve, 10000)); // Wait for 10 seconds before retrying
+            await new Promise(resolve => setTimeout(resolve, 10000));
         }
     }
 }
@@ -210,13 +243,38 @@ updateLocations().catch(error => {
     parentPort.postMessage({ status: 'error', error: error.message });
 });
 
-// Schedule periodic cleanup of the temporary directory every 2 minutes
 setInterval(async () => {
     try {
-        console.log('Starting cleanup of temporary directory...');
+        console.log('Starting cleanup of temporary directories...');
         await cleanUpTempDirectory();
-        console.log('Temporary directory cleaned up successfully.');
+        console.log('Temporary directories cleaned up successfully.');
     } catch (error) {
-        console.error('Error cleaning up temporary directory:', error);
+        console.error('Error cleaning up temporary directories:', error);
     }
-}, 120000); // 60 000 ms = 1 minute, 120 000 ms = 2 minutes
+}, 120000);
+
+
+// Log ram and disk usage --------------------------------------------------------------------------------
+function logMemoryUsage() {
+    const memoryUsage = process.memoryUsage();
+    const formattedMemoryUsage = {
+        rss: (memoryUsage.rss / 1024 / 1024).toFixed(2) + ' MB',
+        heapTotal: (memoryUsage.heapTotal / 1024 / 1024).toFixed(2) + ' MB',
+        heapUsed: (memoryUsage.heapUsed / 1024 / 1024).toFixed(2) + ' MB',
+        external: (memoryUsage.external / 1024 / 1024).toFixed(2) + ' MB',
+    };
+    console.log('Memory Usage:', formattedMemoryUsage);
+}
+
+function logSystemUsage() {
+    const freeMemory = (os.freemem() / 1024 / 1024).toFixed(2) + ' MB';
+    const totalMemory = (os.totalmem() / 1024 / 1024).toFixed(2) + ' MB';
+    const loadAverage = os.loadavg().map(avg => avg.toFixed(2)).join(', ');
+    console.log(`System Memory: Free - ${freeMemory}, Total - ${totalMemory}`);
+    console.log(`Load Average (1, 5, 15 mins): ${loadAverage}`);
+}
+
+setInterval(() => {
+    logMemoryUsage();
+    logSystemUsage();
+}, 60000); // Log every minute
