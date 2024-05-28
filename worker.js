@@ -21,7 +21,15 @@ async function generateRandomStreetViewLocation() {
     try {
         browser = await puppeteer.launch({
             executablePath: '/usr/bin/chromium', // Browser path for docker image
-            args: ['--no-sandbox', '--disable-setuid-sandbox'], // Required for running in many Docker environments
+            args: ['--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--aggressive-cache-discard',
+                '--disable-cache',
+                '--disable-application-cache',
+                '--disable-offline-load-stale-cache',
+                '--disable-gpu-shader-disk-cache',
+                '--media-cache-size=0',
+                '--disk-cache-size=0'], // No sandbox is required for running in many Docker environments, rest is for reducing memory use
             headless: true, // Run in headless mode
             devtools: false, // Disable DevTools protocol
             userDataDir: TEMP_DIR // Set custom temp directory
