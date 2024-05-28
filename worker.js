@@ -29,7 +29,21 @@ async function generateRandomStreetViewLocation() {
                 '--disable-offline-load-stale-cache',
                 '--disable-gpu-shader-disk-cache',
                 '--media-cache-size=0',
-                '--disk-cache-size=0'], // No sandbox is required for running in many Docker environments, rest is for reducing memory use
+                '--disk-cache-size=0',
+                '--disable-extensions',
+                '--disable-component-extensions-with-background-pages',
+                '--disable-default-apps',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--autoplay-policy=user-gesture-required',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-notifications',
+                '--disable-background-networking',
+                '--disable-breakpad',
+                '--disable-component-update',
+                '--disable-domain-reliability',
+                '--disable-sync',], // No sandbox is required for running in many Docker environments, rest is for reducing memory use
             headless: true, // Run in headless mode
             devtools: false, // Disable DevTools protocol
             userDataDir: TEMP_DIR // Set custom temp directory
