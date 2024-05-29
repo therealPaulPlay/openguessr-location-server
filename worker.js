@@ -1,20 +1,12 @@
 const { parentPort, workerData } = require('worker_threads');
-const puppeteer = require('puppeteer');
+const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { exec } = require('child_process');
 
-const SOURCE = "OUTDOOR"; // The streetview source
-const PREFERENCE = "BEST"; // The streetview preference
 const locationLimit = workerData.locationLimit;
-const TEMP_DIR = '/tmp/puppeteer_temp'; // Custom temporary directory for Puppeteer
-const BROWSER_TEMP_DIRS = [
-    '/tmp/chromium',
-    '/var/tmp',
-    '/usr/tmp',
-    '/dev/shm'
-];
+const TEMP_DIR = '/tmp/playwright_temp';
+const BROWSER_TEMP_DIRS = ['/tmp/chromium', '/var/tmp', '/usr/tmp', '/dev/shm'];
 
 let locations = workerData.locations;
 let currentIndex = workerData.currentIndex;
@@ -26,49 +18,50 @@ if (!fs.existsSync(TEMP_DIR)) {
 }
 
 async function launchBrowser() {
-    return puppeteer.launch({
-        executablePath: '/usr/bin/chromium',
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--aggressive-cache-discard',
-            '--disable-cache',
-            '--disable-application-cache',
-            '--disable-offline-load-stale-cache',
-            '--disable-gpu-shader-disk-cache',
-            '--media-cache-size=0',
-            '--disk-cache-size=0',
-            '--disable-extensions',
-            '--disable-component-extensions-with-background-pages',
-            '--disable-default-apps',
-            '--mute-audio',
-            '--no-default-browser-check',
-            '--autoplay-policy=user-gesture-required',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-notifications',
-            '--disable-background-networking',
-            '--disable-breakpad',
-            '--disable-component-update',
-            '--disable-domain-reliability',
-            '--disable-sync',
-            '--disable-gpu', // Disable GPU to save resources
-            '--single-process', // Ensure single process usage
-        ],
-        headless: true,
-        devtools: false,
-        userDataDir: TEMP_DIR,
-        timeout: 60000 // Custom timeout
-    });
+    try {
+        return await chromium.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--aggressive-cache-discard',
+                '--disable-cache',
+                '--disable-application-cache',
+                '--disable-offline-load-stale-cache',
+                '--disable-gpu-shader-disk-cache',
+                '--media-cache-size=0',
+                '--disk-cache-size=0',
+                '--disable-extensions',
+                '--disable-component-extensions-with-background-pages',
+                '--disable-default-apps',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--autoplay-policy=user-gesture-required',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-notifications',
+                '--disable-background-networking',
+                '--disable-breakpad',
+                '--disable-component-update',
+                '--disable-domain-reliability',
+                '--disable-sync',
+                '--disable-gpu',
+                '--single-process',
+            ],
+            userDataDir: TEMP_DIR,
+        });
+    } catch (error) {
+        console.error('Failed to launch the browser:', error);
+        throw new Error('Failed to launch the browser');
+    }
 }
 
 async function generateRandomStreetViewLocation() {
     let browser;
     try {
         browser = await launchBrowser();
-        const page = await browser.newPage();
-
-        await page.goto('about:blank');
+        const context = await browser.newContext();
+        const page = await context.newPage();
         await page.setContent(`
             <body>
             <h1 id="text">coordinates (not yet loaded)</h1>
@@ -85,9 +78,9 @@ async function generateRandomStreetViewLocation() {
                     return new Promise((resolve, reject) => {
                         streetViewService.getPanorama({
                             location: { lat: latitude, lng: longitude },
-                            preference: google.maps.StreetViewPreference.${PREFERENCE},
+                            preference: google.maps.StreetViewPreference.BEST,
                             radius: radius,
-                            sources: [google.maps.StreetViewSource.${SOURCE}]
+                            sources: [google.maps.StreetViewSource.OUTDOOR]
                         }, (data, status) => {
                             if (status === "OK") {
                                 const location = data.location.latLng;
@@ -102,19 +95,14 @@ async function generateRandomStreetViewLocation() {
 
                 async function getCoordsFromGoogle(retryCount = 0) {
                     const { lat, lng } = getRandomSphericalCoordinates();
-                    const searchRadius = 50000; // Adjust radius as needed
+                    const searchRadius = 50000;
 
                     try {
                         const resultLocationsArray = await getLocationData(lat, lng, searchRadius);
                         return resultLocationsArray;
                     } catch (error) {
-                        if (error === "ZERO_RESULTS") {
-                            if (retryCount < 1000) {
-                                return await getCoordsFromGoogle(retryCount + 1);
-                            } else {
-                                console.error("Maximum retry limit reached.");
-                                return null;
-                            }
+                        if (error === "ZERO_RESULTS" && retryCount < 1000) {
+                            return await getCoordsFromGoogle(retryCount + 1);
                         } else {
                             console.error("Error getting coordinates from Google:", error);
                             return null;
@@ -125,9 +113,7 @@ async function generateRandomStreetViewLocation() {
                 function getRandomSphericalCoordinates() {
                     const latRadians = Math.acos(2 * Math.random() - 1) - Math.PI / 2;
                     const lngRadians = 2 * Math.PI * Math.random() - Math.PI;
-                    const lat = (180 / Math.PI) * latRadians;
-                    const lng = (180 / Math.PI) * lngRadians;
-                    return { lat, lng };
+                    return { lat: (180 / Math.PI) * latRadians, lng: (180 / Math.PI) * lngRadians };
                 }
 
                 async function executeScript() {
@@ -141,24 +127,16 @@ async function generateRandomStreetViewLocation() {
                         console.error("Error getting coordinates in execute script:", error);
                     }
                 }
-
             </script>
         `);
 
         await page.waitForSelector('#resultText');
-
-        const locationHandle = await page.evaluateHandle(() => document.getElementById("resultText").textContent);
-        let location = await locationHandle.jsonValue();
-        if (location === "null") {
-            location = null;
-        } else {
-            location = location.split(',').map(Number);
-        }
-        return location;
-
+        const locationHandle = await page.$eval("#resultText", el => el.textContent);
+        let location = locationHandle;
+        return location === "null" ? null : location.split(',').map(Number);
     } catch (error) {
-        console.error("Error: " + error);
-        throw new Error("Error in the puppeteer page: " + error);
+        console.error("Error in Playwright page:", error);
+        throw error;
     } finally {
         if (browser) {
             await browser.close();
@@ -201,7 +179,7 @@ async function updateLocations() {
     while (true) {
         try {
             const location = await generateRandomStreetViewLocation();
-            if (location !== null) {
+            if (location) {
                 if (locations.length < locationLimit) {
                     locations.push(location);
                     currentIndex = locations.length - 1;
@@ -213,9 +191,9 @@ async function updateLocations() {
                 parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
                 saveLocationsToFile();
                 lastUpdateTimestamp = Date.now();
-                attempts = 0; // Reset attempts on success
+                attempts = 0;
             } else {
-                console.log("Google returned an error and location is null (or max retries reached). Retrying in 10 seconds...");
+                console.log("Google returned an error. Retrying in 10 seconds...");
                 await new Promise(resolve => setTimeout(resolve, 10000));
                 attempts++;
             }
@@ -228,7 +206,7 @@ async function updateLocations() {
 
         if (attempts >= 3) {
             console.error("Repeated failures detected, restarting the process...");
-            process.exit(1); // Exit the process to trigger restart by the main server
+            process.exit(1);
         }
     }
 }
@@ -240,7 +218,7 @@ function saveLocationsToFile() {
 updateLocations().catch(error => {
     console.error("Worker encountered an error:", error);
     parentPort.postMessage({ status: 'error', error: error.message });
-    process.exit(1); // Ensure the worker exits on critical error
+    process.exit(1);
 });
 
 setInterval(async () => {
@@ -253,7 +231,8 @@ setInterval(async () => {
     }
 }, 120000); // Cleanup every 2 minutes
 
-// Monitor for inactivity and restart the process if no updates for 3 minutes
+
+// Monitor for inactivity, restart process if needed
 setInterval(() => {
     const currentTime = Date.now();
     if (currentTime - lastUpdateTimestamp > 3 * 60 * 1000) { // 3 minutes
