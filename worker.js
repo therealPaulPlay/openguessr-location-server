@@ -1,12 +1,12 @@
 const { parentPort, workerData } = require('worker_threads');
-const { chromium } = require('playwright');
+const { firefox } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/playwright_temp';
-const BROWSER_TEMP_DIRS = ['/tmp/chromium', '/var/tmp', '/usr/tmp', '/dev/shm'];
+const BROWSER_TEMP_DIRS = ['/tmp/firefox', '/var/tmp', '/usr/tmp', '/dev/shm'];
 
 let locations = workerData.locations;
 let currentIndex = workerData.currentIndex;
@@ -19,7 +19,7 @@ if (!fs.existsSync(TEMP_DIR)) {
 
 async function launchBrowser() {
     try {
-        return await chromium.launch({
+        return await firefox.launch({
             headless: true,
             args: [
                 '--no-sandbox',
@@ -47,6 +47,7 @@ async function launchBrowser() {
                 '--disable-sync',
                 '--disable-gpu',
                 '--single-process',
+                '--no-zygote'
             ],
         });
     } catch (error) {
