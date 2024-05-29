@@ -48,7 +48,6 @@ async function launchBrowser() {
                 '--disable-gpu',
                 '--single-process',
             ],
-            userDataDir: TEMP_DIR,
         });
     } catch (error) {
         console.error('Failed to launch the browser:', error);
@@ -231,8 +230,6 @@ setInterval(async () => {
     }
 }, 120000); // Cleanup every 2 minutes
 
-
-// Monitor for inactivity, restart process if needed
 setInterval(() => {
     const currentTime = Date.now();
     if (currentTime - lastUpdateTimestamp > 3 * 60 * 1000) { // 3 minutes
