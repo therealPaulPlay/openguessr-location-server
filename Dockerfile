@@ -3,7 +3,7 @@ FROM node:18-bullseye-slim
 
 WORKDIR /usr/src/app
 
-# Install Chromium dependencies and Chromium itself
+# Install Chromium dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     fonts-liberation \
@@ -24,16 +24,19 @@ RUN apt-get update && apt-get install -y \
     libxdamage1 \
     libxrandr2 \
     wget \
-    chromium \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Node.js dependencies
 COPY package*.json ./
-
 RUN npm install
 
+# Install Playwright with only Chromium
+RUN npx playwright install chromium --with-deps
+
+# Copy the rest of the application code
 COPY . .
 
 EXPOSE 3000
 
-CMD [ "node", "server.js" ]
+CMD ["node", "server.js"]
