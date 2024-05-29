@@ -16,13 +16,14 @@ const BROWSER_TEMP_DIRS = [
     '/dev/shm'
 ];
 
+let locations = workerData.locations;
+let currentIndex = workerData.currentIndex;
+let lastUpdateTimestamp = Date.now();
+
 // Ensure the custom temp directory exists
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
-
-let locations = workerData.locations;
-let currentIndex = workerData.currentIndex;
 
 async function launchBrowser() {
     return puppeteer.launch({
@@ -165,7 +166,6 @@ async function generateRandomStreetViewLocation() {
     }
 }
 
-// Cleanup many temp storage directories
 async function cleanUpTempDirectory() {
     async function deleteFolderRecursive(directoryPath) {
         const entries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
@@ -212,6 +212,7 @@ async function updateLocations() {
                 }
                 parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
                 saveLocationsToFile();
+                lastUpdateTimestamp = Date.now();
                 attempts = 0; // Reset attempts on success
             } else {
                 console.log("Google returned an error and location is null (or max retries reached). Retrying in 10 seconds...");
@@ -227,7 +228,7 @@ async function updateLocations() {
 
         if (attempts >= 3) {
             console.error("Repeated failures detected, restarting the process...");
-            process.exit(1);
+            process.exit(1); // Exit the process to trigger restart by the main server
         }
     }
 }
@@ -239,7 +240,7 @@ function saveLocationsToFile() {
 updateLocations().catch(error => {
     console.error("Worker encountered an error:", error);
     parentPort.postMessage({ status: 'error', error: error.message });
-    process.exit(1); // Ensure the process exits on critical error
+    process.exit(1); // Ensure the worker exits on critical error
 });
 
 setInterval(async () => {
@@ -250,43 +251,9 @@ setInterval(async () => {
     } catch (error) {
         console.error('Error cleaning up temporary directories:', error);
     }
-}, 120000);
+}, 120000); // Cleanup every 2 minutes
 
-
-// Log RAM and disk usage
-function logMemoryUsage() {
-    const memoryUsage = process.memoryUsage();
-    const formattedMemoryUsage = {
-        rss: (memoryUsage.rss / 1024 / 1024).toFixed(2) + ' MB',
-        heapTotal: (memoryUsage.heapTotal / 1024 / 1024).toFixed(2) + ' MB',
-        heapUsed: (memoryUsage.heapUsed / 1024 / 1024).toFixed(2) + ' MB',
-        external: (memoryUsage.external / 1024 / 1024).toFixed(2) + ' MB',
-    };
-    console.log('Memory Usage:', formattedMemoryUsage);
-}
-
-function logSystemUsage() {
-    const freeMemory = (os.freemem() / 1024 / 1024).toFixed(2) + ' MB';
-    const totalMemory = (os.totalmem() / 1024 / 1024).toFixed(2) + ' MB';
-    const loadAverage = os.loadavg().map(avg => avg.toFixed(2)).join(', ');
-    console.log(`System Memory: Free - ${freeMemory}, Total - ${totalMemory}`);
-    console.log(`Load Average (1, 5, 15 mins): ${loadAverage}`);
-}
-
-setInterval(() => {
-    logMemoryUsage();
-    logSystemUsage();
-}, 60000); // Log every minute
-
-// Watchdog to detect stalled process
-let lastUpdateTimestamp = Date.now();
-
-parentPort.on('message', (message) => {
-    if (message.status === 'updated') {
-        lastUpdateTimestamp = Date.now();
-    }
-});
-
+// Monitor for inactivity and restart the process if no updates for 3 minutes
 setInterval(() => {
     const currentTime = Date.now();
     if (currentTime - lastUpdateTimestamp > 3 * 60 * 1000) { // 3 minutes
