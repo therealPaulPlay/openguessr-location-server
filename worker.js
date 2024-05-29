@@ -24,57 +24,47 @@ if (!fs.existsSync(TEMP_DIR)) {
 let locations = workerData.locations;
 let currentIndex = workerData.currentIndex;
 
-async function launchBrowserWithRetries(retries = 3) {
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await puppeteer.launch({
-                executablePath: '/usr/bin/chromium',
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--aggressive-cache-discard',
-                    '--disable-cache',
-                    '--disable-application-cache',
-                    '--disable-offline-load-stale-cache',
-                    '--disable-gpu-shader-disk-cache',
-                    '--media-cache-size=0',
-                    '--disk-cache-size=0',
-                    '--disable-extensions',
-                    '--disable-component-extensions-with-background-pages',
-                    '--disable-default-apps',
-                    '--mute-audio',
-                    '--no-default-browser-check',
-                    '--autoplay-policy=user-gesture-required',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-notifications',
-                    '--disable-background-networking',
-                    '--disable-breakpad',
-                    '--disable-component-update',
-                    '--disable-domain-reliability',
-                    '--disable-sync',
-                    '--disable-gpu', // Disable GPU to save resources
-                    '--single-process', // Ensure single process usage
-                ],
-                headless: true,
-                devtools: false,
-                userDataDir: TEMP_DIR,
-                timeout: 60000 // Custom timeout
-            });
-        } catch (error) {
-            if (i === retries - 1) {
-                throw error;
-            }
-            console.error(`Failed to launch browser, retrying... (${i + 1}/${retries})`);
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Wait before retrying
-        }
-    }
+async function launchBrowser() {
+    return puppeteer.launch({
+        executablePath: '/usr/bin/chromium',
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--aggressive-cache-discard',
+            '--disable-cache',
+            '--disable-application-cache',
+            '--disable-offline-load-stale-cache',
+            '--disable-gpu-shader-disk-cache',
+            '--media-cache-size=0',
+            '--disk-cache-size=0',
+            '--disable-extensions',
+            '--disable-component-extensions-with-background-pages',
+            '--disable-default-apps',
+            '--mute-audio',
+            '--no-default-browser-check',
+            '--autoplay-policy=user-gesture-required',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-notifications',
+            '--disable-background-networking',
+            '--disable-breakpad',
+            '--disable-component-update',
+            '--disable-domain-reliability',
+            '--disable-sync',
+            '--disable-gpu', // Disable GPU to save resources
+            '--single-process', // Ensure single process usage
+        ],
+        headless: true,
+        devtools: false,
+        userDataDir: TEMP_DIR,
+        timeout: 60000 // Custom timeout
+    });
 }
 
 async function generateRandomStreetViewLocation() {
     let browser;
     try {
-        browser = await launchBrowserWithRetries();
+        browser = await launchBrowser();
         const page = await browser.newPage();
 
         await page.goto('about:blank');
@@ -175,8 +165,7 @@ async function generateRandomStreetViewLocation() {
     }
 }
 
-
-//Cleanup many temp storage directories --------------------------------------------------------------------------------------------------------------
+// Cleanup many temp storage directories
 async function cleanUpTempDirectory() {
     async function deleteFolderRecursive(directoryPath) {
         const entries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
@@ -208,6 +197,7 @@ async function cleanUpTempDirectory() {
 }
 
 async function updateLocations() {
+    let attempts = 0;
     while (true) {
         try {
             const location = await generateRandomStreetViewLocation();
@@ -222,14 +212,22 @@ async function updateLocations() {
                 }
                 parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
                 saveLocationsToFile();
+                attempts = 0; // Reset attempts on success
             } else {
                 console.log("Google returned an error and location is null (or max retries reached). Retrying in 10 seconds...");
                 await new Promise(resolve => setTimeout(resolve, 10000));
+                attempts++;
             }
         } catch (error) {
             console.error("An error occurred while generating location:", error);
             console.log("Retrying in 10 seconds...");
             await new Promise(resolve => setTimeout(resolve, 10000));
+            attempts++;
+        }
+
+        if (attempts >= 3) {
+            console.error("Repeated failures detected, restarting the process...");
+            process.exit(1);
         }
     }
 }
@@ -241,6 +239,7 @@ function saveLocationsToFile() {
 updateLocations().catch(error => {
     console.error("Worker encountered an error:", error);
     parentPort.postMessage({ status: 'error', error: error.message });
+    process.exit(1); // Ensure the process exits on critical error
 });
 
 setInterval(async () => {
@@ -254,7 +253,7 @@ setInterval(async () => {
 }, 120000);
 
 
-// Log ram and disk usage --------------------------------------------------------------------------------
+// Log RAM and disk usage
 function logMemoryUsage() {
     const memoryUsage = process.memoryUsage();
     const formattedMemoryUsage = {
@@ -278,3 +277,20 @@ setInterval(() => {
     logMemoryUsage();
     logSystemUsage();
 }, 60000); // Log every minute
+
+// Watchdog to detect stalled process
+let lastUpdateTimestamp = Date.now();
+
+parentPort.on('message', (message) => {
+    if (message.status === 'updated') {
+        lastUpdateTimestamp = Date.now();
+    }
+});
+
+setInterval(() => {
+    const currentTime = Date.now();
+    if (currentTime - lastUpdateTimestamp > 3 * 60 * 1000) { // 3 minutes
+        console.error('No location updates for 3 minutes, restarting the process...');
+        process.exit(1);
+    }
+}, 60 * 1000); // Check every minute
