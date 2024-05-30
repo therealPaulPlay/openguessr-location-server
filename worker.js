@@ -10,57 +10,69 @@ const BROWSER_TEMP_DIRS = ['/tmp/firefox', '/var/tmp', '/usr/tmp', '/dev/shm'];
 
 let locations = workerData.locations;
 let currentIndex = workerData.currentIndex;
-let lastUpdateTimestamp = Date.now();
 
 // Ensure the custom temp directory exists
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
+let browser;
+
 async function launchBrowser() {
     try {
-        return await firefox.launch({
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--aggressive-cache-discard',
-                '--disable-cache',
-                '--disable-application-cache',
-                '--disable-offline-load-stale-cache',
-                '--disable-gpu-shader-disk-cache',
-                '--media-cache-size=0',
-                '--disk-cache-size=0',
-                '--disable-extensions',
-                '--disable-component-extensions-with-background-pages',
-                '--disable-default-apps',
-                '--mute-audio',
-                '--no-default-browser-check',
-                '--autoplay-policy=user-gesture-required',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-notifications',
-                '--disable-background-networking',
-                '--disable-breakpad',
-                '--disable-component-update',
-                '--disable-domain-reliability',
-                '--disable-sync',
-                '--disable-gpu',
-                '--single-process',
-                '--no-zygote'
-            ],
-        });
+        if (!browser) {
+            browser = await firefox.launch({
+                headless: true,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--aggressive-cache-discard',
+                    '--disable-cache',
+                    '--disable-application-cache',
+                    '--disable-offline-load-stale-cache',
+                    '--disable-gpu-shader-disk-cache',
+                    '--media-cache-size=0',
+                    '--disk-cache-size=0',
+                    '--disable-extensions',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-default-apps',
+                    '--mute-audio',
+                    '--no-default-browser-check',
+                    '--autoplay-policy=user-gesture-required',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-notifications',
+                    '--disable-background-networking',
+                    '--disable-breakpad',
+                    '--disable-component-update',
+                    '--disable-domain-reliability',
+                    '--disable-sync',
+                    '--disable-gpu',
+                    '--single-process',
+                    '--no-zygote'
+                ],
+            });
+        }
     } catch (error) {
         console.error('Failed to launch the browser:', error);
         throw new Error('Failed to launch the browser');
     }
 }
 
+async function resetBrowserContext() {
+    if (browser) {
+        const contexts = browser.contexts();
+        for (const context of contexts) {
+            await context.close();
+        }
+    }
+}
+
 async function generateRandomStreetViewLocation() {
-    let browser;
+    let context;
     try {
-        browser = await launchBrowser();
-        const context = await browser.newContext();
+        await launchBrowser();
+        context = await browser.newContext();
         const page = await context.newPage();
         await page.setContent(`
             <body>
@@ -138,8 +150,8 @@ async function generateRandomStreetViewLocation() {
         console.error("Error in Playwright page:", error);
         throw error;
     } finally {
-        if (browser) {
-            await browser.close();
+        if (context) {
+            await context.close();
         }
     }
 }
@@ -190,7 +202,6 @@ async function updateLocations() {
                 }
                 parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
                 saveLocationsToFile();
-                lastUpdateTimestamp = Date.now();
                 attempts = 0;
             } else {
                 console.log("Google returned an error. Retrying in 10 seconds...");
@@ -230,11 +241,3 @@ setInterval(async () => {
         console.error('Error cleaning up temporary directories:', error);
     }
 }, 120000); // Cleanup every 2 minutes
-
-setInterval(() => {
-    const currentTime = Date.now();
-    if (currentTime - lastUpdateTimestamp > 3 * 60 * 1000) { // 3 minutes
-        console.error('No location updates for 3 minutes, restarting the process...');
-        process.exit(1);
-    }
-}, 60 * 1000); // Check every minute
