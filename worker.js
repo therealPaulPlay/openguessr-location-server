@@ -198,7 +198,7 @@ async function updateLocations() {
                 } else {
                     locations[currentIndex] = location;
                     currentIndex = (currentIndex + 1) % locationLimit;
-                    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 6) * 1000));
+                    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5) * 1000 + 1000));
                 }
                 parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
                 saveLocationsToFile();
