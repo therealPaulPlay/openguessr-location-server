@@ -59,14 +59,8 @@ async function launchBrowser() {
     }
 }
 
-async function resetBrowserContext() {
-    if (browser) {
-        const contexts = browser.contexts();
-        for (const context of contexts) {
-            await context.close();
-        }
-    }
-}
+const preference = "NEAREST";
+const searchRadius = 10000;
 
 async function generateRandomStreetViewLocation() {
     let context;
@@ -90,13 +84,22 @@ async function generateRandomStreetViewLocation() {
                     return new Promise((resolve, reject) => {
                         streetViewService.getPanorama({
                             location: { lat: latitude, lng: longitude },
-                            preference: google.maps.StreetViewPreference.BEST,
+                            preference: google.maps.StreetViewPreference.${preference},
                             radius: radius,
                             sources: [google.maps.StreetViewSource.OUTDOOR]
                         }, (data, status) => {
                             if (status === "OK") {
                                 const location = data.location.latLng;
                                 const resultLocationsArray = [location.lat(), location.lng()];
+                               
+                                const description = data.links[0].description;
+                                
+                                if (!description) {
+                                    if (Math.random() < 0.5) {
+                                        reject("TREKKER");
+                                    }
+                                }
+
                                 resolve(resultLocationsArray);
                             } else {
                                 reject(status);
@@ -107,13 +110,13 @@ async function generateRandomStreetViewLocation() {
 
                 async function getCoordsFromGoogle(retryCount = 0) {
                     const { lat, lng } = getRandomSphericalCoordinates();
-                    const searchRadius = 50000;
+                    const searchRadius = ${searchRadius};
 
                     try {
                         const resultLocationsArray = await getLocationData(lat, lng, searchRadius);
                         return resultLocationsArray;
                     } catch (error) {
-                        if (error === "ZERO_RESULTS" && retryCount < 1000) {
+                        if ((error === "ZERO_RESULTS" || error === "TREKKER") && retryCount < 1000) {
                             return await getCoordsFromGoogle(retryCount + 1);
                         } else {
                             console.error("Error getting coordinates from Google:", error);
@@ -192,16 +195,26 @@ async function updateLocations() {
         try {
             const location = await generateRandomStreetViewLocation();
             if (location) {
-                if (locations.length < locationLimit) {
-                    locations.push(location);
-                    currentIndex = locations.length - 1;
+                const isDuplicate = locations.some(loc =>
+                    loc[0] === location[0] && loc[1] === location[1]
+                );
+
+                if (isDuplicate) {
+                    console.log("Duplicate coordinate pair rejected:", location);
                 } else {
-                    locations[currentIndex] = location;
-                    currentIndex = (currentIndex + 1) % locationLimit;
-                    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5) * 1000 + 1000));
+                    if (locations.length < locationLimit) {
+                        // if the array isn't already full, add new locations
+                        locations.push(location);
+                        currentIndex = locations.length - 1;
+                    } else {
+                        // if the array is already full, update existing locations
+                        locations[currentIndex] = location;
+                        currentIndex = (currentIndex + 1) % locationLimit;
+                        await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5) * 1000 + 1000));
+                    }
+                    parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
+                    saveLocationsToFile();
                 }
-                parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
-                saveLocationsToFile();
                 attempts = 0;
             } else {
                 console.log("Google returned an error. Retrying in 10 seconds...");
@@ -214,7 +227,7 @@ async function updateLocations() {
             await new Promise(resolve => setTimeout(resolve, 10000));
             attempts++;
         }
-
+        
         if (attempts >= 3) {
             console.error("Repeated failures detected, restarting the process...");
             process.exit(1);
