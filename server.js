@@ -11,7 +11,7 @@ const locationLimit = 2000; // The max amount of locations. 2000 is recommended
 app.use(cors());
 
 app.use(cors({
-    origin: ["http://localhost:3001", "http://localhost:3001", "/\\.openguessr\\.com$/", "https://openguessr.com", "https://openguessr.netlify.app", "https://og-venatus-test.netlify.app"]
+    origin: ["http://localhost:3001", "http://localhost:3000", "/\\.openguessr\\.com$/", "https://openguessr.com", "https://og-venatus-test.netlify.app"]
 }));
 
 // Load and save locations ------------------------------------------------------------------------
@@ -79,7 +79,8 @@ function restartWorker() {
 let worker = startWorker();
 
 // Start express app and configure port ----------------------------------------------------------------------------------------------
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
+
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });

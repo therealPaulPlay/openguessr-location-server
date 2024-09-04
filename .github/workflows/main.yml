@@ -6,18 +6,77 @@ on:
       - main
 
 jobs:
-  deploy:
+  deploy-primary:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: install ssh keys
+      - name: Install SSH keys
         run: |
           install -m 600 -D /dev/null ~/.ssh/id_rsa
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_HOST }} > ~/.ssh/known_hosts
 
-      - name: connect, pull changes, build and deploy docker image
-        run: ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd ${{ secrets.WORK_DIR }} && git checkout ${{ secrets.MAIN_BRANCH }} && git pull && docker build -t openguessrlocationgenerator . && docker stop openguessrlocationgenerator && docker rm openguessrlocationgenerator && docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator && exit"
+      - name: Connect to server, build image, and deploy
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            cd ${{ secrets.WORK_DIR }}
 
-      - name: cleanup ssh
+            # Pull latest changes from Git
+            git checkout ${{ secrets.MAIN_BRANCH }}
+            git pull
+
+            # Build Docker image
+            docker build -t openguessrlocationgenerator .
+
+            # Check if container openguessrlocationgenerator exists
+            if ! docker ps -a --format '{{.Names}}' | grep -q "^openguessrlocationgenerator$"; then
+              echo "Container openguessrlocationgenerator does not exist, creating..."
+              docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator
+            else
+              echo "Container openguessrlocationgenerator exists, stopping and removing..."
+              docker stop openguessrlocationgenerator || true
+              docker rm openguessrlocationgenerator || true
+              docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator
+            fi
+          EOF
+
+      - name: Cleanup SSH
+        run: rm -rf ~/.ssh
+
+  deploy-backup:
+    runs-on: ubuntu-22.04
+    needs: deploy-primary
+
+    steps:
+      - name: Install SSH keys for Backup Server
+        run: |
+          install -m 600 -D /dev/null ~/.ssh/id_rsa
+          echo "${{ secrets.BACKUP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.BACKUP_SSH_HOST }} > ~/.ssh/known_hosts
+
+      - name: Connect to Backup Server, build image, and deploy
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.BACKUP_SSH_HOST }} << 'EOF'
+            cd ${{ secrets.WORK_DIR }}
+
+            # Pull latest changes from Git
+            git checkout ${{ secrets.MAIN_BRANCH }}
+            git pull
+
+            # Build Docker image
+            docker build -t openguessrlocationgenerator .
+
+            # Check if container openguessrlocationgenerator exists
+            if ! docker ps -a --format '{{.Names}}' | grep -q "^openguessrlocationgenerator$"; then
+              echo "Container openguessrlocationgenerator does not exist, creating..."
+              docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator
+            else
+              echo "Container openguessrlocationgenerator exists, stopping and removing..."
+              docker stop openguessrlocationgenerator || true
+              docker rm openguessrlocationgenerator || true
+              docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator
+            fi
+          EOF
+
+      - name: Cleanup SSH for Backup Server
         run: rm -rf ~/.ssh
