@@ -31,12 +31,12 @@ jobs:
             # Check if container openguessrlocationgenerator exists
             if ! docker ps -a --format '{{.Names}}' | grep -q "^openguessrlocationgenerator$"; then
               echo "Container openguessrlocationgenerator does not exist, creating..."
-              docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator
+              docker run -d -p 3000:3000 --network host --restart unless-stopped --name openguessrlocationgenerator openguessrlocationgenerator
             else
               echo "Container openguessrlocationgenerator exists, stopping and removing..."
               docker stop openguessrlocationgenerator || true
               docker rm openguessrlocationgenerator || true
-              docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator
+              docker run -d -p 3000:3000 --network host --restart unless-stopped --name openguessrlocationgenerator openguessrlocationgenerator
             fi
           EOF
 
@@ -69,12 +69,12 @@ jobs:
             # Check if container openguessrlocationgenerator exists
             if ! docker ps -a --format '{{.Names}}' | grep -q "^openguessrlocationgenerator$"; then
               echo "Container openguessrlocationgenerator does not exist, creating..."
-              docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator
+              docker run -d -p 3000:3000 --network host --restart unless-stopped --name openguessrlocationgenerator openguessrlocationgenerator
             else
               echo "Container openguessrlocationgenerator exists, stopping and removing..."
               docker stop openguessrlocationgenerator || true
               docker rm openguessrlocationgenerator || true
-              docker run -d -p 3000:3000 --network host --name openguessrlocationgenerator openguessrlocationgenerator
+              docker run -d -p 3000:3000 --network host --restart unless-stopped --name openguessrlocationgenerator openguessrlocationgenerator
             fi
           EOF
 
