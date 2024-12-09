@@ -2,16 +2,35 @@ const express = require('express');
 const cors = require('cors');
 const { Worker } = require('worker_threads');
 const fs = require('fs');
+const rateLimit = require('express-rate-limit');
+const requestIp = require('request-ip'); // For getting the correct IP
 
 const app = express();
 
 const locationLimit = 2000; // The max amount of locations. 2000 is recommended
 
+// Middleware to retrieve client IP
+app.use(requestIp.mw());
+
+// Standard Rate Limiter
+const standardLimiter = rateLimit({
+    windowMs: 1000, // 1 second
+    keyGenerator: (req) => req.clientIp, // Use the client's IP
+    max: 10, // Limit each IP to 10 requests per second
+    message: { error: 'Too many requests. Please try again later.' },
+});
+
 // Cors config ---------------------------------------------------------------------------------
 app.use(cors());
 
 app.use(cors({
-    origin: ["http://localhost:3001", "http://localhost:3000", "/\\.openguessr\\.com$/", "https://openguessr.com", "https://og-venatus-test.netlify.app"]
+    origin: [
+        "http://localhost:3001",
+        "http://localhost:3000",
+        "/\\.openguessr\\.com$/",
+        "https://openguessr.com",
+        "https://og-venatus-test.netlify.app"
+    ]
 }));
 
 // Load and save locations ------------------------------------------------------------------------
@@ -28,6 +47,10 @@ function loadLocationsFromFile() {
 let locations = loadLocationsFromFile();
 let currentIndex = locations.length % locationLimit;
 
+// Apply the rate limiter globally or selectively
+app.use(standardLimiter);
+
+// Routes
 app.get('/locations', (req, res) => {
     if (locations.length === 0) {
         res.status(500).json({ error: "Locations are still being generated. Please try again later." });
