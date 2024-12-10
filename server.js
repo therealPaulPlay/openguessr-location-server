@@ -27,8 +27,10 @@ app.use(cors({
     origin: [
         "http://localhost:3001",
         "http://localhost:3000",
-        "/\\.openguessr\\.com$/",
+        /\\.openguessr\\.com$/,
         "https://openguessr.com",
+        "https://openguessr-86h.pages.dev",
+        /\.openguessr-86h\.pages\.dev\/?$/,
         "https://og-venatus-test.netlify.app"
     ]
 }));
