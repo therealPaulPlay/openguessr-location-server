@@ -104,7 +104,7 @@ function restartWorker() {
 let worker = startWorker();
 
 // Start express app and configure port ----------------------------------------------------------------------------------------------
-const PORT = 3000;
+const PORT = 3006;
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

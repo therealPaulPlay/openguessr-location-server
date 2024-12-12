@@ -36,6 +36,6 @@ RUN npx playwright install firefox --with-deps
 # Copy the rest of the application code
 COPY . .
 
-EXPOSE 3000
+EXPOSE 3006
 
 CMD ["node", "server.js"]
