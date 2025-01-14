@@ -54,10 +54,15 @@ app.use(standardLimiter);
 
 // Routes
 app.get('/locations', (req, res) => {
-    if (locations.length === 0) {
-        res.status(500).json({ error: "Locations are still being generated. Please try again later." });
-    } else {
-        res.json({ locations });
+    try {
+        if (locations.length === 0) {
+            res.status(500).json({ error: "Locations are still being generated. Please try again later." });
+        } else {
+            res.json({ locations });
+        }
+    } catch (error) {
+        console.error("Error sending out locations:", error);
+        res.status(500).json({ error: "An internal server error occured returning the locations: " + error });
     }
 });
 
