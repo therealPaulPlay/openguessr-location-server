@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const requestIp = require('request-ip'); // For getting the correct IP
 
 const app = express();
+const PORT = 3006;
 
 const locationLimit = 2000; // The max amount of locations. 2000 is recommended
 
@@ -55,7 +56,7 @@ app.use(standardLimiter);
 // Routes
 app.get('/locations', (req, res) => {
     try {
-        if (locations.length === 0) {
+        if (locations?.length === 0) {
             res.status(500).json({ error: "Locations are still being generated. Please try again later." });
         } else {
             res.json({ locations });
@@ -63,6 +64,32 @@ app.get('/locations', (req, res) => {
     } catch (error) {
         console.error("Error sending out locations:", error);
         res.status(500).json({ error: "An internal server error occured returning the locations: " + error });
+    }
+});
+
+app.get('/locations/:index', (req, res) => {
+    const { index } = req.params;
+
+    try {
+        if (locations?.length === 0) {
+            res.status(500).json({ error: "Locations are still being generated. Please try again later." });
+        } else {
+            const location = locations[Number(index)];
+            if (!location) res.status(404).json({ error: "This location is not generated." });
+            res.json({ location });
+        }
+    } catch (error) {
+        console.error("Error sending out one location:", error);
+        res.status(500).json({ error: "An internal server error occured returning a single location: " + error });
+    }
+});
+
+app.get('/location-length', (req, res) => {
+    try {
+        res.json({ length: locations?.length || 0 });
+    } catch (error) {
+        console.error("Error sending out location amount:", error);
+        res.status(500).json({ error: "An internal server error occured returning the location amount: " + error });
     }
 });
 
@@ -109,8 +136,6 @@ function restartWorker() {
 let worker = startWorker();
 
 // Start express app and configure port ----------------------------------------------------------------------------------------------
-const PORT = 3006;
-
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
