@@ -67,20 +67,38 @@ app.get('/locations', (req, res) => {
     }
 });
 
-app.get('/locations/:index', (req, res) => {
-    const { index } = req.params;
+app.put('/locations-batch', (req, res) => {
+    const { indexes } = req.body;
 
     try {
-        if (locations?.length === 0) {
-            res.status(500).json({ error: "Locations are still being generated. Please try again later." });
-        } else {
-            const location = locations[Number(index)];
-            if (!location) res.status(404).json({ error: "This location is not generated." });
-            res.json({ location });
+        // Validate that indexes exists and is an array
+        if (!indexes || !Array.isArray(indexes)) {
+            return res.status(400).json({ error: "Request body must include 'indexes' as an array." });
         }
+
+        // Validate array length
+        if (indexes.length > 100) {
+            return res.status(400).json({ error: "Cannot request more than 100 batch locations at once." });
+        }
+
+        if (locations?.length === 0) {
+            return res.status(500).json({ error: "Locations are still being generated. Please try again later." });
+        }
+
+        // Replace the indexes with the coordinate pairs, and remove ones that don't exist
+        const batchLocations = indexes.map(index => locations[Number(index)])
+            .filter(location => location !== undefined);
+
+        if (batchLocations.length !== indexes.length) {
+            return res.status(404).json({
+                error: "Some requested locations are not generated."
+            });
+        }
+
+        res.json({ locations: batchLocations });
     } catch (error) {
-        console.error("Error sending out one location:", error);
-        res.status(500).json({ error: "An internal server error occured returning a single location: " + error });
+        console.error("Error sending out batch locations:", error);
+        res.status(500).json({ error: "An internal server error occurred returning batch locations: " + error });
     }
 });
 
