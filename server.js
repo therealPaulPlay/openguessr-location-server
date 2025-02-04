@@ -13,6 +13,9 @@ const locationLimit = 2000; // The max amount of locations. 2000 is recommended
 // Middleware to retrieve client IP
 app.use(requestIp.mw());
 
+// Parse body of incoming requests
+app.use(express.json());
+
 // Standard Rate Limiter
 const standardLimiter = rateLimit({
     windowMs: 1000, // 1 second
