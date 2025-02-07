@@ -60,15 +60,9 @@ async function launchBrowser(force = false) {
             });
         }
         if (force) {
-            if (context) {
-                try {
-                    await context.close();
-                } catch (e) {
-                    console.error("Error closing context:", e);
-                }
-                context = null;
-                page = null;
-            }
+            await context.close();
+            context = null;
+            page = null;
         }
         if (!context) {
             context = await browser.newContext();
@@ -129,7 +123,8 @@ async function launchBrowser(force = false) {
                             const resultLocationsArray = await getLocationData(lat, lng, searchRadius);
                             return resultLocationsArray;
                         } catch (error) {
-                            if ((error === "ZERO_RESULTS" || error === "TREKKER") && retryCount < 1000) {
+                            if ((error === "ZERO_RESULTS" || error === "TREKKER") && retryCount < 250) {
+                                await new Promise(resolve => setTimeout(resolve, 100)); // Short timeout to not put too much strain on the api
                                 return await getCoordsFromGoogle(retryCount + 1);
                             } else {
                                 console.error("Error getting coordinates from Google:", error);
