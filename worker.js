@@ -20,57 +20,45 @@ let browser;
 let context;
 let page;
 
-/**
- * Launches the browser and creates a new context and page.
- * If `force` is true, any existing context/page will be closed and re-created.
- */
-async function launchBrowser(force = false) {
+async function launchBrowser() {
     try {
-        if (!browser) {
-            browser = await firefox.launch({
-                headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--aggressive-cache-discard',
-                    '--disable-cache',
-                    '--disable-application-cache',
-                    '--disable-offline-load-stale-cache',
-                    '--disable-gpu-shader-disk-cache',
-                    '--media-cache-size=0',
-                    '--disk-cache-size=0',
-                    '--disable-extensions',
-                    '--disable-component-extensions-with-background-pages',
-                    '--disable-default-apps',
-                    '--mute-audio',
-                    '--no-default-browser-check',
-                    '--autoplay-policy=user-gesture-required',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-notifications',
-                    '--disable-background-networking',
-                    '--disable-breakpad',
-                    '--disable-component-update',
-                    '--disable-domain-reliability',
-                    '--disable-sync',
-                    '--disable-gpu',
-                    '--single-process',
-                    '--no-zygote'
-                ],
-            });
-        }
-        if (force) {
-            await context.close();
-            context = null;
-            page = null;
-        }
-        if (!context) {
-            context = await browser.newContext();
-        }
-        if (!page) {
-            page = await context.newPage();
-            // Load the page content with Google Maps API and helper functions.
-            await page.setContent(`
+        if (browser) return; // Browser already running, exit!
+        browser = await firefox.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--aggressive-cache-discard',
+                '--disable-cache',
+                '--disable-application-cache',
+                '--disable-offline-load-stale-cache',
+                '--disable-gpu-shader-disk-cache',
+                '--media-cache-size=0',
+                '--disk-cache-size=0',
+                '--disable-extensions',
+                '--disable-component-extensions-with-background-pages',
+                '--disable-default-apps',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--autoplay-policy=user-gesture-required',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-notifications',
+                '--disable-background-networking',
+                '--disable-breakpad',
+                '--disable-component-update',
+                '--disable-domain-reliability',
+                '--disable-sync',
+                '--disable-gpu',
+                '--single-process',
+                '--no-zygote'
+            ],
+        });
+        context = await browser.newContext();
+        page = await context.newPage();
+
+        // Load the page content with Google Maps API and our helper functions.
+        await page.setContent(`
                 <body>
                     <h1>Google Maps Location Generator</h1>
                 </body>
@@ -144,9 +132,8 @@ async function launchBrowser(force = false) {
                     };
                 </script>
             `);
-            // Wait until the Google Maps API is loaded and our function is defined.
-            await page.waitForFunction(() => typeof window.getStreetViewLocation === 'function');
-        }
+        // Wait until the Google Maps API is loaded and our function is defined.
+        await page.waitForFunction(() => typeof window.getStreetViewLocation === 'function');
     } catch (error) {
         console.error('Failed to launch the browser:', error);
         throw new Error('Failed to launch the browser');
@@ -155,7 +142,6 @@ async function launchBrowser(force = false) {
 
 async function generateRandomStreetViewLocation() {
     try {
-        // Ensure the browser (and page) is ready; pass false so we don’t force a refresh.
         await launchBrowser();
         // Call our page's helper function to generate a location.
         const location = await page.evaluate(async () => {
@@ -198,25 +184,9 @@ async function cleanUpTempDirectory() {
     }
 }
 
-const REFRESH_THRESHOLD = 100; // Refresh the page every 100 iterations to mitigate memory leak
-
 async function updateLocations() {
     let attempts = 0;
-    let iterationCount = 0;
-
     while (true) {
-        // Periodically refresh the browser context/page to release accumulated memory.
-        if (iterationCount > 0 && iterationCount % REFRESH_THRESHOLD === 0) {
-            console.log("Refreshing browser context to mitigate memory leak.");
-            try {
-                // Pass 'true' to force a refresh (i.e. close and re-create context and page)
-                await launchBrowser(true);
-            } catch (err) {
-                console.error("Error refreshing browser context:", err);
-            }
-        }
-        iterationCount++;
-
         try {
             const location = await generateRandomStreetViewLocation();
             if (location) {

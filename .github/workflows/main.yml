@@ -31,12 +31,12 @@ jobs:
             # Check if container openguessrlocationgenerator exists
             if ! docker ps -a --format '{{.Names}}' | grep -q "^openguessrlocationgenerator$"; then
               echo "Container openguessrlocationgenerator does not exist, creating..."
-              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --name openguessrlocationgenerator openguessrlocationgenerator
+              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessrlocationgenerator openguessrlocationgenerator
             else
               echo "Container openguessrlocationgenerator exists, stopping and removing..."
               docker stop openguessrlocationgenerator || true
               docker rm openguessrlocationgenerator || true
-              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --name openguessrlocationgenerator openguessrlocationgenerator
+              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessrlocationgenerator openguessrlocationgenerator
             fi
           EOF
 
