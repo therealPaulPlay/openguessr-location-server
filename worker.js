@@ -72,10 +72,6 @@ async function launchBrowser() {
                 console.error('Page error:', err);
             });
 
-            page.on('pageerror', err => {
-                console.error('Page error:', err);
-            });
-
             // Load the page content with Google Maps API and our helper functions.
             await page.setContent(`
             <body>
@@ -123,7 +119,6 @@ async function launchBrowser() {
                     });
                 }
 
-                // Recursive function that retries up to 1000 times.
                 async function getCoordsFromGoogle(retryCount = 0) {
                     const { lat, lng } = getRandomSphericalCoordinates();
                     try {
@@ -171,7 +166,7 @@ async function generateRandomStreetViewLocation() {
     generationIndexForBrowserCleanup++;
 
     try {
-        // Force browser restart once in a while to prevent memory leaks or issues
+        // Force context restart once in a while to prevent memory leaks or issues
         if (generationIndexForBrowserCleanup % 50 == 0 && context) {
             console.log("Clearing context for memory safety...");
             await context.close();
@@ -180,12 +175,24 @@ async function generateRandomStreetViewLocation() {
         }
         await launchBrowser();
         // Call our page's helper function to generate a location.
-        const location = await page.evaluate(async () => {
-            return await window.getStreetViewLocation();
-        });
+        const location = await Promise.race([
+            page.evaluate(async () => {
+                return await window.getStreetViewLocation();
+            }),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Location generation timeout after 30 seconds')), 30000)
+            )
+        ]);
         return location;
+        
     } catch (error) {
         console.error("Error in generateRandomStreetViewLocation in Playwright page:", error);
+        if (error.message.includes("timeout") && context) {
+            console.log("Timeout occurred, forcing context reset...");
+            await context.close();
+            context = null;
+            page = null;
+        }
         throw error;
     }
 }
