@@ -8,7 +8,7 @@ const requestIp = require('request-ip'); // For getting the correct IP
 const app = express();
 const PORT = 3006;
 
-const locationLimit = 2000; // The max amount of locations. 2000 is recommended
+const locationLimit = 5000; // The max amount of locations. 2,000 - 10,000 is recommended
 
 // Middleware to retrieve client IP
 app.use(requestIp.mw());

@@ -22,126 +22,162 @@ let page;
 
 async function launchBrowser() {
     try {
-        if (browser) return; // Browser already running, exit!
-        browser = await firefox.launch({
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--aggressive-cache-discard',
-                '--disable-cache',
-                '--disable-application-cache',
-                '--disable-offline-load-stale-cache',
-                '--disable-gpu-shader-disk-cache',
-                '--media-cache-size=0',
-                '--disk-cache-size=0',
-                '--disable-extensions',
-                '--disable-component-extensions-with-background-pages',
-                '--disable-default-apps',
-                '--mute-audio',
-                '--no-default-browser-check',
-                '--autoplay-policy=user-gesture-required',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-notifications',
-                '--disable-background-networking',
-                '--disable-breakpad',
-                '--disable-component-update',
-                '--disable-domain-reliability',
-                '--disable-sync',
-                '--disable-gpu',
-                '--single-process',
-                '--no-zygote'
-            ],
-        });
-        context = await browser.newContext();
-        page = await context.newPage();
+        if (!browser) {
+            browser = await firefox.launch({
+                headless: true,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--aggressive-cache-discard',
+                    '--disable-cache',
+                    '--disable-application-cache',
+                    '--disable-offline-load-stale-cache',
+                    '--disable-gpu-shader-disk-cache',
+                    '--media-cache-size=0',
+                    '--disk-cache-size=0',
+                    '--disable-extensions',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-default-apps',
+                    '--mute-audio',
+                    '--no-default-browser-check',
+                    '--autoplay-policy=user-gesture-required',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-notifications',
+                    '--disable-background-networking',
+                    '--disable-breakpad',
+                    '--disable-component-update',
+                    '--disable-domain-reliability',
+                    '--disable-sync',
+                    '--disable-gpu',
+                    '--single-process',
+                    '--no-zygote'
+                ],
+            });
 
-        // Load the page content with Google Maps API and our helper functions.
-        await page.setContent(`
-                <body>
-                    <h1>Google Maps Location Generator</h1>
-                </body>
-                <script src="https://maps.googleapis.com/maps/api/js?callback=initMap" async defer></script>
-                <script>
-                    // Set your parameters. The searchRadius here is fixed to 10000.
-                    const preference = "NEAREST";
-                    const searchRadius = 10000;
+            browser.on('disconnected', () => {
+                console.error('Browser disconnected.');
+                browser = null;
+                context = null;
+                page = null;
+            });
+        }
 
-                    // Returns random spherical coordinates.
-                    function getRandomSphericalCoordinates() {
-                        const latRadians = Math.acos(2 * Math.random() - 1) - Math.PI / 2;
-                        const lngRadians = 2 * Math.PI * Math.random() - Math.PI;
-                        return { lat: (180 / Math.PI) * latRadians, lng: (180 / Math.PI) * lngRadians };
-                    }
+        if (!context) {
+            // Create context and page
+            context = await browser.newContext();
+            page = await context.newPage();
 
-                    // Wraps the Street View API call in a Promise.
-                    function getLocationData(latitude, longitude, radius) {
-                        const streetViewService = new google.maps.StreetViewService();
-                        return new Promise((resolve, reject) => {
-                            streetViewService.getPanorama({
-                                location: { lat: latitude, lng: longitude },
-                                preference: google.maps.StreetViewPreference[preference],
-                                radius: radius,
-                                sources: [google.maps.StreetViewSource.OUTDOOR]
-                            }, (data, status) => {
-                                if (status === "OK") {
-                                    const location = data.location.latLng;
-                                    const resultLocationsArray = [location.lat(), location.lng()];
-                                    // If no description, randomly reject.
-                                    const description = data.links[0].description;
-                                    if (!description) {
-                                        if (Math.random() < 0.5) {
-                                            reject("TREKKER");
-                                            return;
-                                        }
+            page.on('error', err => {
+                console.error('Page error:', err);
+            });
+
+            page.on('pageerror', err => {
+                console.error('Page error:', err);
+            });
+
+            // Load the page content with Google Maps API and our helper functions.
+            await page.setContent(`
+            <body>
+                <h1>Google Maps Location Generator</h1>
+            </body>
+            <script src="https://maps.googleapis.com/maps/api/js?callback=initMap" async defer></script>
+            <script>
+                // Set your parameters. The searchRadius here is fixed to 10000.
+                const preference = "NEAREST";
+                const searchRadius = 10000;
+
+                // Returns random spherical coordinates.
+                function getRandomSphericalCoordinates() {
+                    const latRadians = Math.acos(2 * Math.random() - 1) - Math.PI / 2;
+                    const lngRadians = 2 * Math.PI * Math.random() - Math.PI;
+                    return { lat: (180 / Math.PI) * latRadians, lng: (180 / Math.PI) * lngRadians };
+                }
+
+                // Wraps the Street View API call in a Promise.
+                function getLocationData(latitude, longitude, radius) {
+                    const streetViewService = new google.maps.StreetViewService();
+                    return new Promise((resolve, reject) => {
+                        streetViewService.getPanorama({
+                            location: { lat: latitude, lng: longitude },
+                            preference: google.maps.StreetViewPreference[preference],
+                            radius: radius,
+                            sources: [google.maps.StreetViewSource.OUTDOOR]
+                        }, (data, status) => {
+                            if (status === "OK") {
+                                const location = data.location.latLng;
+                                const resultLocationsArray = [location.lat(), location.lng()];
+                                // If no description, randomly reject.
+                                const description = data.links[0].description;
+                                if (!description) {
+                                    if (Math.random() < 0.5) {
+                                        reject("TREKKER");
+                                        return;
                                     }
-                                    resolve(resultLocationsArray);
-                                } else {
-                                    reject(status);
                                 }
-                            });
-                        });
-                    }
-
-                    // Recursive function that retries up to 1000 times.
-                    async function getCoordsFromGoogle(retryCount = 0) {
-                        const { lat, lng } = getRandomSphericalCoordinates();
-                        try {
-                            const resultLocationsArray = await getLocationData(lat, lng, searchRadius);
-                            return resultLocationsArray;
-                        } catch (error) {
-                            if ((error === "ZERO_RESULTS" || error === "TREKKER") && retryCount < 250) {
-                                await new Promise(resolve => setTimeout(resolve, 100)); // Short timeout to not put too much strain on the api
-                                return await getCoordsFromGoogle(retryCount + 1);
+                                resolve(resultLocationsArray);
                             } else {
-                                console.error("Error getting coordinates from Google:", error);
-                                return null;
+                                reject(status);
                             }
+                        });
+                    });
+                }
+
+                // Recursive function that retries up to 1000 times.
+                async function getCoordsFromGoogle(retryCount = 0) {
+                    const { lat, lng } = getRandomSphericalCoordinates();
+                    try {
+                        const resultLocationsArray = await getLocationData(lat, lng, searchRadius);
+                        return resultLocationsArray;
+                    } catch (error) {
+                        if ((error === "ZERO_RESULTS" || error === "TREKKER") && retryCount < 250) {
+                            await new Promise(resolve => setTimeout(resolve, 100)); // Short timeout to not put too much strain on the api
+                            return await getCoordsFromGoogle(retryCount + 1);
+                        } else {
+                            console.error("Error getting coordinates from Google:", error);
+                            return null;
                         }
                     }
-                    
-                    // Expose a function to retrieve a street view location.
-                    window.getStreetViewLocation = async function() {
-                        return await getCoordsFromGoogle();
-                    };
+                }
+                
+                // Expose a function to retrieve a street view location.
+                window.getStreetViewLocation = async function() {
+                    return await getCoordsFromGoogle();
+                };
 
-                    // Callback for the API load.
-                    window.initMap = function() {
-                        console.log("Google Maps API loaded and helper functions initialized.");
-                    };
-                </script>
+                // Callback for the API load.
+                window.initMap = function() {
+                    console.log("Google Maps API loaded and helper functions initialized.");
+                };
+            </script>
             `);
-        // Wait until the Google Maps API is loaded and our function is defined.
-        await page.waitForFunction(() => typeof window.getStreetViewLocation === 'function');
+            // Wait until the Google Maps API is loaded and our function is defined.
+            await Promise.race([
+                page.waitForFunction(() => typeof window.getStreetViewLocation === 'function'),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Timeout: Google Maps API failed to load within 30 seconds')), 30000)
+                )
+            ]);
+        }
     } catch (error) {
         console.error('Failed to launch the browser:', error);
         throw new Error('Failed to launch the browser');
     }
 }
 
+let generationIndexForBrowserCleanup = 0;
+
 async function generateRandomStreetViewLocation() {
+    generationIndexForBrowserCleanup++;
+
     try {
+        // Force browser restart once in a while to prevent memory leaks or issues
+        if (generationIndexForBrowserCleanup % 50 == 0 && context) {
+            console.log("Clearing context for memory safety...");
+            await context.close();
+            context = null;
+            page = null;
+        }
         await launchBrowser();
         // Call our page's helper function to generate a location.
         const location = await page.evaluate(async () => {
