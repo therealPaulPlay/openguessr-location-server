@@ -184,9 +184,8 @@ async function generateRandomStreetViewLocation() {
             )
         ]);
         return location;
-        
+
     } catch (error) {
-        console.error("Error in generateRandomStreetViewLocation in Playwright page:", error);
         if (error.message.includes("timeout") && context) {
             console.log("Timeout occurred, forcing context reset...");
             await context.close();
