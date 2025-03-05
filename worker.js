@@ -3,6 +3,7 @@ const { firefox } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
+const getCountryFromCoords = require('./countryFromCoordinates.js'); // This is new, takes lat, lng as the arguments
 
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/playwright_temp';
