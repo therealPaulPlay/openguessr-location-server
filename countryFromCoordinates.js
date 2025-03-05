@@ -1,4 +1,4 @@
-const gridData = require("/JSON/countries.json");
+const gridData = require("./json/countries.json");
 
 async function getCountryFromCoords(lat, lon) {
     try {
