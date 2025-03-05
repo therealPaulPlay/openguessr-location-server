@@ -3,6 +3,10 @@ const { firefox } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
+const getCountryFromCoords = require('./countryFromCoordinates.js');
+
+const citiesJson = JSON.parse(fs.readFileSync('./json/cities-over-20k.json', 'utf8'));
+const CITY_SELECTION_PROBABILITY = 0.4;
 
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/playwright_temp';
@@ -19,6 +23,28 @@ if (!fs.existsSync(TEMP_DIR)) {
 let browser;
 let context;
 let page;
+
+// Get random spherical coordinates
+function getRandomCoordinates() {
+    const latRadians = Math.acos(2 * Math.random() - 1) - Math.PI / 2;
+    const lngRadians = 2 * Math.PI * Math.random() - Math.PI;
+    return [
+        (180 / Math.PI) * latRadians,
+        (180 / Math.PI) * lngRadians
+    ];
+}
+
+// Get a random city from JSON and add randomness based on population
+function getCityCoordinates() {
+    const city = citiesJson[Math.floor(Math.random() * citiesJson.length)];
+    // Scale randomness based on population size (around 500m - 10km)
+    let randomnessFactor = 0.002 + (0.198 * Math.min(1, Math.pow(city?.population / 10000000, 0.7)));
+
+    // Add randomness to coordinates (-1 to 1 range * factor)
+    const lat = city.coordinates.lat + (Math.random() * 2 - 1) * randomnessFactor;
+    const lon = city.coordinates.lon + (Math.random() * 2 - 1) * randomnessFactor;
+    return [lat, lon];
+}
 
 async function launchBrowser() {
     try {
@@ -72,45 +98,38 @@ async function launchBrowser() {
                 console.error('Page error:', err);
             });
 
-            // Load the page content with Google Maps API and our helper functions.
+            // Load the page content with Google Maps API and helper function
             await page.setContent(`
             <body>
                 <h1>Google Maps Location Generator</h1>
             </body>
             <script src="https://maps.googleapis.com/maps/api/js?callback=initMap" async defer></script>
             <script>
-                // Set your parameters. The searchRadius here is fixed to 10000.
+                // Street View API parameters
                 const preference = "NEAREST";
                 const searchRadius = 10000;
 
-                // Returns random spherical coordinates.
-                function getRandomSphericalCoordinates() {
-                    const latRadians = Math.acos(2 * Math.random() - 1) - Math.PI / 2;
-                    const lngRadians = 2 * Math.PI * Math.random() - Math.PI;
-                    return { lat: (180 / Math.PI) * latRadians, lng: (180 / Math.PI) * lngRadians };
-                }
-
-                // Wraps the Street View API call in a Promise.
-                function getLocationData(latitude, longitude, radius) {
+                // Find Street View panorama at given coordinates
+                function getLocationData(latitude, longitude) {
                     const streetViewService = new google.maps.StreetViewService();
                     return new Promise((resolve, reject) => {
                         streetViewService.getPanorama({
                             location: { lat: latitude, lng: longitude },
                             preference: google.maps.StreetViewPreference[preference],
-                            radius: radius,
+                            radius: searchRadius,
                             sources: [google.maps.StreetViewSource.OUTDOOR]
                         }, (data, status) => {
                             if (status === "OK") {
                                 const location = data.location.latLng;
                                 const resultLocationsArray = [location.lat(), location.lng()];
-                                // If no description, randomly reject.
+                                
+                                // If no description, randomly reject (Trekker panorama)
                                 const description = data.links[0].description;
-                                if (!description) {
-                                    if (Math.random() < 0.5) {
-                                        reject("TREKKER");
-                                        return;
-                                    }
+                                if (!description && Math.random() < 0.5) {
+                                    reject("TREKKER");
+                                    return;
                                 }
+                                
                                 resolve(resultLocationsArray);
                             } else {
                                 reject(status);
@@ -118,37 +137,29 @@ async function launchBrowser() {
                         });
                     });
                 }
-
-                async function getCoordsFromGoogle(retryCount = 0) {
-                    const { lat, lng } = getRandomSphericalCoordinates();
+                
+                // Exposed function to find Street View at coordinates
+                window.findStreetView = async function(lat, lng) {
                     try {
-                        const resultLocationsArray = await getLocationData(lat, lng, searchRadius);
-                        return resultLocationsArray;
+                        return await getLocationData(lat, lng);
                     } catch (error) {
-                        if ((error === "ZERO_RESULTS" || error === "TREKKER") && retryCount < 250) {
-                            await new Promise(resolve => setTimeout(resolve, 100)); // Short timeout to not put too much strain on the api
-                            return await getCoordsFromGoogle(retryCount + 1);
-                        } else {
-                            console.error("Error getting coordinates from Google:", error);
+                        if (error === "ZERO_RESULTS" || error === "TREKKER") {
                             return null;
                         }
+                        throw error;
                     }
-                }
-                
-                // Expose a function to retrieve a street view location.
-                window.getStreetViewLocation = async function() {
-                    return await getCoordsFromGoogle();
                 };
 
                 // Callback for the API load.
                 window.initMap = function() {
-                    console.log("Google Maps API loaded and helper functions initialized.");
+                    console.log("Google Maps API loaded.");
                 };
             </script>
             `);
-            // Wait until the Google Maps API is loaded and our function is defined.
+
+            // Wait until the Google Maps API is loaded
             await Promise.race([
-                page.waitForFunction(() => typeof window.getStreetViewLocation === 'function'),
+                page.waitForFunction(() => typeof window.findStreetView === 'function'),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Timeout: Google Maps API failed to load within 30 seconds')), 30000)
                 )
@@ -162,11 +173,58 @@ async function launchBrowser() {
 
 let generationIndexForBrowserCleanup = 0;
 
+async function tryFindStreetView(coordinates) {
+    return await Promise.race([
+        page.evaluate(async (coords) => {
+            return await window.findStreetView(coords[0], coords[1]);
+        }, coordinates),
+        new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Location generation timeout after 30 seconds')), 30000)
+        )
+    ]);
+}
+
+async function findRandomLocation() {
+    // Try up to 250 times with different random coordinates
+    for (let attempt = 0; attempt < 250; attempt++) {
+        const coords = getRandomCoordinates();
+
+        // Check if in overrepresented country
+        const overrepresentedCountries = ["United States of America", "Australia", "Brazil", "India", "Russia", "Argentina"];
+        const country = await getCountryFromCoords(coords[0], coords[1]);
+        if (overrepresentedCountries.includes(country) && Math.random() < 0.25) { // 25% rejection
+            console.log(`Rejected random location in ${country} (overrepresented)`);
+            continue;
+        }
+
+        // Try to find street view at these coordinates
+        const location = await tryFindStreetView(coords);
+        if (location) return location;
+        await new Promise((res) => setTimeout(res, 100)); // Short delay between attempts
+    }
+
+    console.log("Failed to find street view after many random location attempts");
+    return null;
+}
+
+async function findCityLocation() {
+    // Cities have a much higher hit rate, but still try a few times
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const coords = getCityCoordinates();
+        const location = await tryFindStreetView(coords);
+        if (location) return location;
+        await new Promise((res) => setTimeout(res, 100)); // Short delay between attempts
+    }
+
+    console.warn("Failed to find street view after multiple city location attempts");
+    return null;
+}
+
 async function generateRandomStreetViewLocation() {
     generationIndexForBrowserCleanup++;
 
     try {
-        // Force context restart once in a while to prevent memory leaks or issues
+        // Force context restart once in a while to prevent memory leaks
         if (generationIndexForBrowserCleanup % 50 == 0 && context) {
             console.log("Clearing context for memory safety...");
             await context.close();
@@ -174,17 +232,14 @@ async function generateRandomStreetViewLocation() {
             page = null;
         }
         await launchBrowser();
-        // Call our page's helper function to generate a location.
-        const location = await Promise.race([
-            page.evaluate(async () => {
-                return await window.getStreetViewLocation();
-            }),
-            new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Location generation timeout after 30 seconds')), 30000)
-            )
-        ]);
-        return location;
 
+        // Decide whether to use city or random coordinates
+        const useCity = Math.random() < CITY_SELECTION_PROBABILITY;
+        if (useCity) {
+            return await findCityLocation();
+        } else {
+            return await findRandomLocation();
+        }
     } catch (error) {
         if (error.message.includes("timeout") && context) {
             console.log("Timeout occurred, forcing context reset...");
@@ -248,14 +303,14 @@ async function updateLocations() {
                         locations[currentIndex] = location;
                         currentIndex = (currentIndex + 1) % locationLimit;
                         // Add a delay before trying again.
-                        await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5) * 1000 + 1000));
+                        await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5 + 1) * 1000));
                     }
                     parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
                     saveLocationsToFile();
                 }
                 attempts = 0;
             } else {
-                console.log("Google returned an error. Retrying in 10 seconds...");
+                console.log("Page returned no location (null). Retrying in 10 seconds...");
                 await new Promise(resolve => setTimeout(resolve, 10000));
                 attempts++;
             }
