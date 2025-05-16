@@ -1,5 +1,5 @@
-# Use the official Node.js image based on Debian with Node.js 18
-FROM node:18-bullseye-slim
+# Use the official Node.js image (lightweight alpine)
+FROM node:22-alpine
 
 WORKDIR /usr/src/app
 
