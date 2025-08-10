@@ -1,4 +1,4 @@
-name: Deploy Node Server
+name: Deploy node server
 
 on:
   push:
@@ -22,21 +22,21 @@ jobs:
             cd ${{ secrets.WORK_DIR }}
 
             # Pull latest changes from Git
-            git checkout ${{ secrets.MAIN_BRANCH }}
+            git checkout main
             git pull
 
             # Build Docker image
-            docker build -t openguessrlocationgenerator .
+            docker build -t openguessr-location-server .
 
-            # Check if container openguessrlocationgenerator exists
-            if ! docker ps -a --format '{{.Names}}' | grep -q "^openguessrlocationgenerator$"; then
-              echo "Container openguessrlocationgenerator does not exist, creating..."
-              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessrlocationgenerator openguessrlocationgenerator
+            # Check if container openguessr-location-server exists
+            if ! docker ps -a --format '{{.Names}}' | grep -q "^openguessr-location-server$"; then
+              echo "Container openguessr-location-server does not exist, creating..."
+              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessr-location-server openguessr-location-server
             else
-              echo "Container openguessrlocationgenerator exists, stopping and removing..."
-              docker stop openguessrlocationgenerator || true
-              docker rm openguessrlocationgenerator || true
-              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessrlocationgenerator openguessrlocationgenerator
+              echo "Container openguessr-location-server exists, stopping and removing..."
+              docker stop openguessr-location-server || true
+              docker rm openguessr-location-server || true
+              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessr-location-server openguessr-location-server
             fi
           EOF
 
