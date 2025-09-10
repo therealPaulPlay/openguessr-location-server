@@ -4,11 +4,11 @@ This project uses the Google Maps JS API to generate locations on the server-sid
 that can then be served to the frontend via a simple api. The project uses node.js. 
 
 The project generates locations using the Google Maps JavaScript API. You can set the maximum amount of 
-locations to generate in server.js ```const locationLimit = Your preferred limit```. The server will never 
+locations to generate in server.js `const locationLimit = Your preferred limit`. The server will never 
 stop generating these locations, rather it will start updating them one by one when the maximum amount
 has been reached. 
 
-To retrieve the list of currently available locations in json form, make a ```GET``` request to the ```/locations``` endpoint.
+The server saves the location file as JSON in S3.
 
-To build with docker, run ```docker build -t location-server .```. You can then save the image 
-using ```docker save -o image.tar location-server:latest```.
+To build with docker, run `docker build -t location-server .`. You can then save the image 
+using `docker save -o image.tar location-server:latest`.

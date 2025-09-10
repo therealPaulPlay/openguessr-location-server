@@ -21,6 +21,9 @@ jobs:
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             cd ${{ secrets.WORK_DIR }}
 
+            # Write .env file from secret
+            echo "${{ secrets.ENV_FILE }}" > .env
+
             # Pull latest changes from Git
             git checkout main
             git pull
