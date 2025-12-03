@@ -22,7 +22,7 @@ let currentIndex = locations.length % locationLimit;
 setInterval(async () => {
     try {
         if (locations.length > 500) {
-            const storageKey = "openguessr-official-maps/standard.json"
+            const storageKey = "openguessr-official-maps/world.json"
             await s3Client.send(
                 new PutObjectCommand({
                     Bucket: process.env.s3BucketName,
