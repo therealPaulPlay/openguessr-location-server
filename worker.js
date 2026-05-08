@@ -59,7 +59,7 @@ function getCityCoordinates() {
 // Get a random capital city with randomness
 function getCapitalCoordinates() {
     const capital = capitalsJson[Math.floor(Math.random() * capitalsJson.length)];
-    const randomnessFactor = 0.18; // ~20 km
+    const randomnessFactor = 0.08; // ~8 km radius, should be recognizable downtown
     const lat = capital.coordinates.lat + (Math.random() * 2 - 1) * randomnessFactor;
     const lon = capital.coordinates.lon + (Math.random() * 2 - 1) * randomnessFactor;
     return [lat, lon];
