@@ -32,14 +32,15 @@ jobs:
             docker build -t openguessr-location-server .
 
             # Check if container openguessr-location-server exists
+            # Run with --init so tini becomes PID 1 and reaps orphaned firefox subprocesses
             if ! docker ps -a --format '{{.Names}}' | grep -q "^openguessr-location-server$"; then
               echo "Container openguessr-location-server does not exist, creating..."
-              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessr-location-server openguessr-location-server
+              docker run -d --init -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessr-location-server openguessr-location-server
             else
               echo "Container openguessr-location-server exists, stopping and removing..."
               docker stop openguessr-location-server || true
               docker rm openguessr-location-server || true
-              docker run -d -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessr-location-server openguessr-location-server
+              docker run -d --init -p 3006:3006 --network host --restart unless-stopped --cpus=1 --memory=750m --name openguessr-location-server openguessr-location-server
             fi
           EOF
 

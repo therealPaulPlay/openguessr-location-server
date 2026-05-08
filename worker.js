@@ -6,7 +6,17 @@ const { exec } = require('child_process');
 const getCountryFromCoords = require('./countryFromCoordinates.js');
 
 const citiesJson = JSON.parse(fs.readFileSync('./json/cities-over-20k.json', 'utf8'));
-const CITY_SELECTION_PROBABILITY = 0.4;
+const capitalsJson = JSON.parse(fs.readFileSync('./json/capital-city-names.json', 'utf8'))
+    .filter(c => c.coordinates && c.coordinates.lat != null && c.coordinates.lon != null);
+
+const CAPITAL_SELECTION_PROBABILITY = 0.20;
+const CITY_SELECTION_PROBABILITY = 0.40;
+
+// Reject 50% of panoramas without a road description (likely Trekker / off-road imagery)
+const TREKKER_REJECTION_PROBABILITY = 0.5;
+// Reject 70% of pre-2011 panoramas (gen 1 / gen 2 cameras typically have lower image quality)
+const OLD_IMAGERY_CUTOFF_YEAR = 2011;
+const OLD_IMAGERY_REJECTION_PROBABILITY = 0.7;
 
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/playwright_temp';
@@ -43,6 +53,15 @@ function getCityCoordinates() {
     // Add randomness to coordinates (-1 to 1 range * factor)
     const lat = city.coordinates.lat + (Math.random() * 2 - 1) * randomnessFactor;
     const lon = city.coordinates.lon + (Math.random() * 2 - 1) * randomnessFactor;
+    return [lat, lon];
+}
+
+// Get a random capital city with randomness
+function getCapitalCoordinates() {
+    const capital = capitalsJson[Math.floor(Math.random() * capitalsJson.length)];
+    const randomnessFactor = 0.18; // ~20 km
+    const lat = capital.coordinates.lat + (Math.random() * 2 - 1) * randomnessFactor;
+    const lon = capital.coordinates.lon + (Math.random() * 2 - 1) * randomnessFactor;
     return [lat, lon];
 }
 
@@ -108,6 +127,9 @@ async function launchBrowser() {
                 // Street View API parameters
                 const preference = "NEAREST";
                 const searchRadius = 10000;
+                const trekkerRejectionProbability = ${TREKKER_REJECTION_PROBABILITY};
+                const oldImageryCutoffYear = ${OLD_IMAGERY_CUTOFF_YEAR};
+                const oldImageryRejectionProbability = ${OLD_IMAGERY_REJECTION_PROBABILITY};
 
                 // Find Street View panorama at given coordinates
                 function getLocationData(latitude, longitude) {
@@ -121,29 +143,40 @@ async function launchBrowser() {
                         }, (data, status) => {
                             if (status === "OK") {
                                 const location = data.location.latLng;
-                                const resultLocationsArray = [location.lat(), location.lng()];
-                                
+                                const firstLink = data.links && data.links[0];
+
                                 // If no description, randomly reject (Trekker panorama)
-                                const description = data.links[0].description;
-                                if (!description && Math.random() < 0.5) {
+                                if (firstLink && !firstLink.description && Math.random() < trekkerRejectionProbability) {
                                     reject("TREKKER");
                                     return;
                                 }
-                                
-                                resolve(resultLocationsArray);
+
+                                // Deprioritize gen 1/2 cameras: imageDate is YYYY-MM (sometimes absent)
+                                if (data.imageDate) {
+                                    const year = parseInt(data.imageDate.slice(0, 4), 10);
+                                    if (Number.isFinite(year) && year < oldImageryCutoffYear && Math.random() < oldImageryRejectionProbability) {
+                                        reject("OLD_IMAGERY");
+                                        return;
+                                    }
+                                }
+
+                                // Heading aligned with the road (degrees, 0 = North) so the panorama faces along it
+                                const heading = firstLink && typeof firstLink.heading === 'number' ? firstLink.heading : null;
+
+                                resolve([location.lat(), location.lng(), { heading }]);
                             } else {
                                 reject(status);
                             }
                         });
                     });
                 }
-                
+
                 // Exposed function to find Street View at coordinates
                 window.findStreetView = async function(lat, lng) {
                     try {
                         return await getLocationData(lat, lng);
                     } catch (error) {
-                        if (error === "ZERO_RESULTS" || error === "TREKKER") {
+                        if (error === "ZERO_RESULTS" || error === "TREKKER" || error === "OLD_IMAGERY") {
                             return null;
                         }
                         throw error;
@@ -192,7 +225,7 @@ async function findRandomLocation() {
         // Check if in overrepresented country
         const overrepresentedCountries = ["United States of America", "Australia", "Brazil", "India", "Russia", "Argentina"];
         const country = await getCountryFromCoords(coords[0], coords[1]);
-        if (overrepresentedCountries.includes(country) && Math.random() < 0.25) { // 25% rejection
+        if (overrepresentedCountries.includes(country) && Math.random() < 0.35) { // 35% rejection
             console.log(`Rejected random location in ${country} (overrepresented)`);
             continue;
         }
@@ -220,6 +253,19 @@ async function findCityLocation() {
     return null;
 }
 
+async function findCapitalLocation() {
+    // Capitals have a much higher hit rate, but still try a few times
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const coords = getCapitalCoordinates();
+        const location = await tryFindStreetView(coords);
+        if (location) return location;
+        await new Promise((res) => setTimeout(res, 100));
+    }
+
+    console.warn("Failed to find street view after multiple capital location attempts");
+    return null;
+}
+
 async function generateRandomStreetViewLocation() {
     generationIndexForBrowserCleanup++;
 
@@ -233,13 +279,12 @@ async function generateRandomStreetViewLocation() {
         }
         await launchBrowser();
 
-        // Decide whether to use city or random coordinates
-        const useCity = Math.random() < CITY_SELECTION_PROBABILITY;
-        if (useCity) {
-            return await findCityLocation();
-        } else {
-            return await findRandomLocation();
-        }
+        // Decide between capital, city, or fully random coordinates
+        const roll = Math.random();
+        if (roll < CAPITAL_SELECTION_PROBABILITY) return await findCapitalLocation();
+        if (roll < CAPITAL_SELECTION_PROBABILITY + CITY_SELECTION_PROBABILITY) return await findCityLocation();
+        return await findRandomLocation();
+
     } catch (error) {
         if (error.message.includes("timeout") && context) {
             console.log("Timeout occurred, forcing context reset...");
@@ -270,9 +315,9 @@ async function cleanUpTempDirectory() {
         await fs.promises.mkdir(TEMP_DIR, { recursive: true });
 
         for (const dir of BROWSER_TEMP_DIRS) {
-            exec(`rm -rf ${dir}/*`, (err, stdout, stderr) => {
-                if (err) {
-                    console.error(`Error cleaning directory ${dir}: ${err.message}`);
+            exec(`rm -rf ${dir}/*`, (error, stdout, stderr) => {
+                if (error) {
+                    console.error(`Error cleaning directory ${dir}: ${error.message}`);
                 }
             });
         }
@@ -348,4 +393,4 @@ setInterval(async () => {
     } catch (error) {
         console.error('Error cleaning up temporary directories:', error);
     }
-}, 120000);
+}, 120_000);

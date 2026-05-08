@@ -1,10 +1,11 @@
 require('dotenv').config();
+
 const { Worker } = require('worker_threads');
 const fs = require('fs');
 const { s3Client } = require('./s3Connection');
 const { PutObjectCommand } = require('@aws-sdk/client-s3');
 
-const locationLimit = 5000; // The max amount of locations. 2,000 - 10,000 is recommended
+const locationLimit = 5_000; // The max amount of locations. 2,000 - 10,000 is recommended
 
 // Function to load locations from disk
 function loadLocationsFromFile() {
@@ -39,18 +40,18 @@ setInterval(async () => {
     } catch (error) {
         console.error("Error updating JSON file in S3:", error);
     }
-}, 10 * 60 * 1000)
+}, 10 * 60 * 1000);
 
 // Function to start the worker and handle messages, errors, and exits
 function startWorker() {
     const worker = new Worker('./worker.js', {
-        workerData: { locations, currentIndex, locationLimit } // pass the variables as worker data
+        workerData: { locations, currentIndex, locationLimit } // Pass the variables as worker data
     });
 
     worker.on('message', message => {
         if (message.status === 'updated') {
             locations = message.locations;
-            currentIndex = message.index; // keep the index synchronized between server.js and worker.js
+            currentIndex = message.index; // Keep the index synchronized between server.js and worker.js
             console.log("Locations updated. Updated at: ", currentIndex + " Current count:", locations.length);
         } else if (message.status === 'error') {
             console.error("Worker error:", message.error);
