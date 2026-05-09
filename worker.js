@@ -9,14 +9,19 @@ const citiesJson = JSON.parse(fs.readFileSync('./json/cities-over-20k.json', 'ut
 const capitalsJson = JSON.parse(fs.readFileSync('./json/capital-city-names.json', 'utf8'))
     .filter(c => c.coordinates && c.coordinates.lat != null && c.coordinates.lon != null);
 
+// Get 40% of locations from cities with >20k inhabitants, and 20% from capital cities
 const CAPITAL_SELECTION_PROBABILITY = 0.20;
 const CITY_SELECTION_PROBABILITY = 0.40;
 
-// Reject 50% of panoramas without a road description (likely Trekker / off-road imagery)
+// Reject 50% of Trekker coverage (They typically lack a road description)
 const TREKKER_REJECTION_PROBABILITY = 0.5;
-// Reject 70% of pre-2011 panoramas (gen 1 / gen 2 cameras typically have lower image quality)
+
+// Reject 80% of unofficial panoramas (No heading data, also pano IDs start with CAo)
+const UNOFFICIAL_REJECTION_PROBABILITY = 0.80;
+
+// Reject 70% of low-quality panoramas (Taken before 2011)
 const OLD_IMAGERY_CUTOFF_YEAR = 2011;
-const OLD_IMAGERY_REJECTION_PROBABILITY = 0.7;
+const OLD_IMAGERY_REJECTION_PROBABILITY = 0.70;
 
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/playwright_temp';
@@ -128,6 +133,7 @@ async function launchBrowser() {
                 const preference = "NEAREST";
                 const searchRadius = 10000;
                 const trekkerRejectionProbability = ${TREKKER_REJECTION_PROBABILITY};
+                const unofficialRejectionProbability = ${UNOFFICIAL_REJECTION_PROBABILITY};
                 const oldImageryCutoffYear = ${OLD_IMAGERY_CUTOFF_YEAR};
                 const oldImageryRejectionProbability = ${OLD_IMAGERY_REJECTION_PROBABILITY};
 
@@ -151,6 +157,16 @@ async function launchBrowser() {
                                     return;
                                 }
 
+                                // Heading (aligned with the road direction)
+                                const heading = firstLink && typeof firstLink.heading === 'number' ? firstLink.heading : null;
+
+                                // Deprioritize unofficial coverage (user-contributed photospheres and drone shots)
+                                // No road-link heading, they're not part of Google's road graph
+                                if (heading === null && Math.random() < unofficialRejectionProbability) {
+                                    reject("UNOFFICIAL");
+                                    return;
+                                }
+
                                 // Deprioritize gen 1/2 cameras: imageDate is YYYY-MM (sometimes absent)
                                 if (data.imageDate) {
                                     const year = parseInt(data.imageDate.slice(0, 4), 10);
@@ -159,9 +175,6 @@ async function launchBrowser() {
                                         return;
                                     }
                                 }
-
-                                // Heading aligned with the road (degrees, 0 = North) so the panorama faces along it
-                                const heading = firstLink && typeof firstLink.heading === 'number' ? firstLink.heading : null;
 
                                 resolve([location.lat(), location.lng(), { heading }]);
                             } else {
@@ -176,7 +189,7 @@ async function launchBrowser() {
                     try {
                         return await getLocationData(lat, lng);
                     } catch (error) {
-                        if (error === "ZERO_RESULTS" || error === "TREKKER" || error === "OLD_IMAGERY") {
+                        if (error === "ZERO_RESULTS" || error === "TREKKER" || error === "UNOFFICIAL" || error === "OLD_IMAGERY") {
                             return null;
                         }
                         throw error;
