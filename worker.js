@@ -16,7 +16,8 @@ const CITY_SELECTION_PROBABILITY = 0.40;
 // Reject 50% of Trekker coverage (They typically lack a road description)
 const TREKKER_REJECTION_PROBABILITY = 0.5;
 
-// Reject 80% of unofficial panoramas (No heading data, also pano IDs start with CAo)
+// Reject 80% of unofficial panoramas (Copyright is not Google, pano IDs start with CAo)
+// Most unofficial panoramas don't provide a heading property, but some actually do (and rarely some official ones don't) -> not an indicator
 const UNOFFICIAL_REJECTION_PROBABILITY = 0.80;
 
 // Reject 70% of low-quality panoramas (Taken before 2011)
@@ -127,7 +128,7 @@ async function launchBrowser() {
             <body>
                 <h1>Google Maps Location Generator</h1>
             </body>
-            <script src="https://maps.googleapis.com/maps/api/js?callback=initMap" async defer></script>
+            <script src="https://maps.googleapis.com/maps/api/js?callback=initMap" defer></script>
             <script>
                 // Street View API parameters
                 const preference = "NEAREST";
@@ -152,20 +153,25 @@ async function launchBrowser() {
                                 const firstLink = data.links && data.links[0];
 
                                 // If no description, randomly reject (Trekker panorama)
+                                // Note that seemingly all unofficial coverage also lacks the description
                                 if (firstLink && !firstLink.description && Math.random() < trekkerRejectionProbability) {
                                     reject("TREKKER");
                                     return;
                                 }
 
-                                // Heading (aligned with the road direction)
-                                const heading = firstLink && typeof firstLink.heading === 'number' ? firstLink.heading : null;
-
-                                // Deprioritize unofficial coverage (user-contributed photospheres and drone shots)
-                                // No road-link heading, they're not part of Google's road graph
-                                if (heading === null && Math.random() < unofficialRejectionProbability) {
+                                // Deprioritize unofficial coverage
+                                const copyright = data.copyright || "";
+                                if (!/google/i.test(copyright) && Math.random() < unofficialRejectionProbability) {
                                     reject("UNOFFICIAL");
                                     return;
                                 }
+
+                                // Heading (aligned with the road direction)
+                                const linkHeading = firstLink && typeof firstLink.heading === 'number' ? firstLink.heading : null;
+                                const centerHeading = data.tiles && typeof data.tiles.centerHeading === 'number' && data.tiles.centerHeading !== 0
+                                    ? data.tiles.centerHeading
+                                    : null;
+                                const heading = linkHeading !== null ? linkHeading : centerHeading;
 
                                 // Deprioritize gen 1/2 cameras: imageDate is YYYY-MM (sometimes absent)
                                 if (data.imageDate) {
