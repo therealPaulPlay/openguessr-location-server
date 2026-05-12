@@ -16,13 +16,17 @@ const CITY_SELECTION_PROBABILITY = 0.40;
 // Reject 50% of Trekker coverage (They typically lack a road description)
 const TREKKER_REJECTION_PROBABILITY = 0.5;
 
-// Reject 80% of unofficial panoramas (Copyright is not Google, pano IDs start with CAo)
+// Reject 90% of unofficial panoramas (Copyright is not Google, pano IDs start with CAo)
 // Most unofficial panoramas don't provide a heading property, but some actually do (and rarely some official ones don't) -> not an indicator
-const UNOFFICIAL_REJECTION_PROBABILITY = 0.80;
+const UNOFFICIAL_REJECTION_PROBABILITY = 0.90;
 
 // Reject 70% of low-quality panoramas (Taken before 2011)
 const OLD_IMAGERY_CUTOFF_YEAR = 2011;
 const OLD_IMAGERY_REJECTION_PROBABILITY = 0.70;
+
+// Street View search radius in meters
+// Tighter than the previous 10km to lower the amount of "odd" locations like drone shots or weird unofficial panos
+const SEARCH_RADIUS = 7500;
 
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/playwright_temp';
@@ -132,7 +136,7 @@ async function launchBrowser() {
             <script>
                 // Street View API parameters
                 const preference = "NEAREST";
-                const searchRadius = 10000;
+                const searchRadius = ${SEARCH_RADIUS};
                 const trekkerRejectionProbability = ${TREKKER_REJECTION_PROBABILITY};
                 const unofficialRejectionProbability = ${UNOFFICIAL_REJECTION_PROBABILITY};
                 const oldImageryCutoffYear = ${OLD_IMAGERY_CUTOFF_YEAR};
@@ -190,7 +194,7 @@ async function launchBrowser() {
                     });
                 }
 
-                // Exposed function to find Street View at coordinates
+                // Exposed function to find Street View
                 window.findStreetView = async function(lat, lng) {
                     try {
                         return await getLocationData(lat, lng);
@@ -261,7 +265,7 @@ async function findRandomLocation() {
 
 async function findCityLocation() {
     // Cities have a much higher hit rate, but still try a few times
-    for (let attempt = 0; attempt < 10; attempt++) {
+    for (let attempt = 0; attempt < 50; attempt++) {
         const coords = getCityCoordinates();
         const location = await tryFindStreetView(coords);
         if (location) return location;
@@ -274,7 +278,7 @@ async function findCityLocation() {
 
 async function findCapitalLocation() {
     // Capitals have a much higher hit rate, but still try a few times
-    for (let attempt = 0; attempt < 10; attempt++) {
+    for (let attempt = 0; attempt < 50; attempt++) {
         const coords = getCapitalCoordinates();
         const location = await tryFindStreetView(coords);
         if (location) return location;
