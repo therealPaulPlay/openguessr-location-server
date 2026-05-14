@@ -20,10 +20,6 @@ const TREKKER_REJECTION_PROBABILITY = 0.5;
 // Most unofficial panoramas don't provide a heading property, but some actually do (and rarely some official ones don't) -> not an indicator
 const UNOFFICIAL_REJECTION_PROBABILITY = 0.98;
 
-// Reject 70% of low-quality panoramas (Taken before 2011)
-const OLD_IMAGERY_CUTOFF_YEAR = 2011;
-const OLD_IMAGERY_REJECTION_PROBABILITY = 0.70;
-
 // Street View search radius in meters
 // Higher radii lead to more obscure locations and more photospheres, lower values make finding locs slow
 const SEARCH_RADIUS = 5000;
@@ -139,8 +135,6 @@ async function launchBrowser() {
                 const searchRadius = ${SEARCH_RADIUS};
                 const trekkerRejectionProbability = ${TREKKER_REJECTION_PROBABILITY};
                 const unofficialRejectionProbability = ${UNOFFICIAL_REJECTION_PROBABILITY};
-                const oldImageryCutoffYear = ${OLD_IMAGERY_CUTOFF_YEAR};
-                const oldImageryRejectionProbability = ${OLD_IMAGERY_REJECTION_PROBABILITY};
 
                 // Find Street View panorama at given coordinates
                 function getLocationData(latitude, longitude) {
@@ -170,21 +164,19 @@ async function launchBrowser() {
                                     return;
                                 }
 
+                                // Reject Gen 1
+                                const worldSizeWidth = data.tiles && data.tiles.worldSize && data.tiles.worldSize.width;
+                                if (typeof worldSizeWidth === 'number' && worldSizeWidth <= 3328) {
+                                    reject("GEN_1");
+                                    return;
+                                }
+
                                 // Heading (aligned with the road direction)
                                 const linkHeading = firstLink && typeof firstLink.heading === 'number' ? firstLink.heading : null;
                                 const centerHeading = data.tiles && typeof data.tiles.centerHeading === 'number' && data.tiles.centerHeading !== 0
                                     ? data.tiles.centerHeading
                                     : null;
                                 const heading = linkHeading !== null ? linkHeading : centerHeading;
-
-                                // Deprioritize gen 1/2 cameras: imageDate is YYYY-MM (sometimes absent)
-                                if (data.imageDate) {
-                                    const year = parseInt(data.imageDate.slice(0, 4), 10);
-                                    if (Number.isFinite(year) && year < oldImageryCutoffYear && Math.random() < oldImageryRejectionProbability) {
-                                        reject("OLD_IMAGERY");
-                                        return;
-                                    }
-                                }
 
                                 resolve([location.lat(), location.lng(), { heading }]);
                             } else {
@@ -199,7 +191,7 @@ async function launchBrowser() {
                     try {
                         return await getLocationData(lat, lng);
                     } catch (error) {
-                        if (error === "ZERO_RESULTS" || error === "TREKKER" || error === "UNOFFICIAL" || error === "OLD_IMAGERY") {
+                        if (error === "ZERO_RESULTS" || error === "TREKKER" || error === "UNOFFICIAL" || error === "GEN_1") {
                             return null;
                         }
                         throw error;
