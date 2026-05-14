@@ -6,44 +6,71 @@ const { s3Client } = require('./s3Connection');
 const { PutObjectCommand } = require('@aws-sdk/client-s3');
 
 const locationLimit = 5_000; // The max amount of locations. 2,000 - 10,000 is recommended
+const s3Key = "openguessr-official-maps/world.json";
+const localFile = "locations.json";
 
-// Function to load locations from disk
-function loadLocationsFromFile() {
-    if (fs.existsSync('locations.json')) {
-        const data = fs.readFileSync('locations.json', 'utf-8');
-        return JSON.parse(data);
+const DEBUG = process.env.DEBUG === "true";
+
+async function loadLocationsFromLocal() {
+    if (!fs.existsSync(localFile)) return [];
+    try {
+        const data = JSON.parse(fs.readFileSync(localFile, "utf-8"));
+        const locs = Array.isArray(data) ? data : (data && Array.isArray(data.locations) ? data.locations : []);
+        return locs;
+    } catch (error) {
+        return [];
     }
-    return [];
 }
 
-let locations = loadLocationsFromFile();
-let currentIndex = locations.length % locationLimit;
-
-// Periodically save locations to S3
-setInterval(async () => {
+async function loadLocationsFromS3() {
+    const url = `https://${process.env.s3BucketName}.fra1.digitaloceanspaces.com/${s3Key}`;
     try {
-        if (locations.length > 500) {
-            const storageKey = "openguessr-official-maps/world.json"
+        const res = await fetch(url);
+        if (!res.ok) {
+            console.log(`No existing locations in S3 or failed to fetch (status ${res.status}), starting fresh.`);
+            return [];
+        }
+        const data = await res.json();
+        const locs = Array.isArray(data) ? data : (data && Array.isArray(data.locations) ? data.locations : []);
+        return locs;
+    } catch (error) {
+        console.error("Error loading locations from S3, starting fresh:", error.message);
+        return [];
+    }
+}
+
+let locations = [];
+let currentIndex = 0;
+
+// Periodically push locations to S3
+if (!DEBUG) {
+    setInterval(async () => {
+        if (locations.length <= 500) {
+            console.log("Skipping S3 update as locations are too few.");
+            return;
+        }
+        try {
             await s3Client.send(
                 new PutObjectCommand({
                     Bucket: process.env.s3BucketName,
-                    Key: storageKey,
+                    Key: s3Key,
                     Body: JSON.stringify({ locations }),
                     ContentType: 'application/json',
                     ACL: 'public-read', // Make publicly readable
                 })
             );
-            console.log("Successfully updated location JSON file in S3!")
-        } else {
-            console.log("Skipping JSON update in S3 as locations are too few.")
+            console.log("Successfully updated location JSON file in S3!");
+        } catch (error) {
+            console.error("Error updating JSON file in S3:", error);
         }
-    } catch (error) {
-        console.error("Error updating JSON file in S3:", error);
-    }
-}, 10 * 60 * 1000);
+    }, 10 * 60 * 1000);
+}
 
 // Function to start the worker and handle messages, errors, and exits
-function startWorker() {
+async function startWorker() {
+    locations = DEBUG ? await loadLocationsFromLocal() : await loadLocationsFromS3();
+    currentIndex = locations.length % locationLimit;
+
     const worker = new Worker('./worker.js', {
         workerData: { locations, currentIndex, locationLimit } // Pass the variables as worker data
     });
@@ -53,6 +80,7 @@ function startWorker() {
             locations = message.locations;
             currentIndex = message.index; // Keep the index synchronized between server.js and worker.js
             console.log("Locations updated. Updated at: ", currentIndex + " Current count:", locations.length);
+            if (DEBUG) fs.writeFileSync(localFile, JSON.stringify({ locations }));
         } else if (message.status === 'error') {
             console.error("Worker error:", message.error);
         }
@@ -69,17 +97,13 @@ function startWorker() {
             restartWorker();
         }
     });
-
-    return worker;
 }
 
 // Function to restart the worker
 function restartWorker() {
     console.log("Restarting worker...");
-    setTimeout(() => {
-        worker = startWorker();
-    }, 1000); // Restart the worker after a short delay
+    setTimeout(startWorker, 1000); // Restart the worker after a short delay
 }
 
 // Start the initial worker
-let worker = startWorker();
+startWorker();

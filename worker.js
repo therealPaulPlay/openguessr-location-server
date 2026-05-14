@@ -16,17 +16,17 @@ const CITY_SELECTION_PROBABILITY = 0.40;
 // Reject 50% of Trekker coverage (They typically lack a road description)
 const TREKKER_REJECTION_PROBABILITY = 0.5;
 
-// Reject 90% of unofficial panoramas (Copyright is not Google, pano IDs start with CAo)
+// Reject 98% of unofficial panoramas (Copyright is not Google, pano IDs start with CAo)
 // Most unofficial panoramas don't provide a heading property, but some actually do (and rarely some official ones don't) -> not an indicator
-const UNOFFICIAL_REJECTION_PROBABILITY = 0.90;
+const UNOFFICIAL_REJECTION_PROBABILITY = 0.98;
 
 // Reject 70% of low-quality panoramas (Taken before 2011)
 const OLD_IMAGERY_CUTOFF_YEAR = 2011;
 const OLD_IMAGERY_REJECTION_PROBABILITY = 0.70;
 
 // Street View search radius in meters
-// Tighter than the previous 10km to lower the amount of "odd" locations like drone shots or weird unofficial panos
-const SEARCH_RADIUS = 7500;
+// Higher radii lead to more obscure locations and more photospheres, lower values make finding locs slow
+const SEARCH_RADIUS = 5000;
 
 const locationLimit = workerData.locationLimit;
 const TEMP_DIR = '/tmp/playwright_temp';
@@ -253,13 +253,13 @@ async function findRandomLocation() {
             continue;
         }
 
-        // Try to find street view at these coordinates
+        // Try to find panorama at these coordinates
         const location = await tryFindStreetView(coords);
         if (location) return location;
         await new Promise((res) => setTimeout(res, 100)); // Short delay between attempts
     }
 
-    console.log("Failed to find street view after many random location attempts");
+    console.error("Exhausted random location attempts!");
     return null;
 }
 
@@ -272,7 +272,7 @@ async function findCityLocation() {
         await new Promise((res) => setTimeout(res, 100)); // Short delay between attempts
     }
 
-    console.warn("Failed to find street view after multiple city location attempts");
+    console.error("Exhausted city location attempts!");
     return null;
 }
 
@@ -285,7 +285,7 @@ async function findCapitalLocation() {
         await new Promise((res) => setTimeout(res, 100));
     }
 
-    console.warn("Failed to find street view after multiple capital location attempts");
+    console.error("Exhausted capital location attempts!");
     return null;
 }
 
@@ -339,9 +339,7 @@ async function cleanUpTempDirectory() {
 
         for (const dir of BROWSER_TEMP_DIRS) {
             exec(`rm -rf ${dir}/*`, (error, stdout, stderr) => {
-                if (error) {
-                    console.error(`Error cleaning directory ${dir}: ${error.message}`);
-                }
+                if (error) console.error(`Error cleaning directory ${dir}: ${error.message}`);
             });
         }
     } catch (error) {
@@ -363,18 +361,17 @@ async function updateLocations() {
                     console.log("Duplicate coordinate pair rejected:", location);
                 } else {
                     if (locations.length < locationLimit) {
-                        // Array isn't full yet, so add the new location.
+                        // Array isn't full yet, so add the new location
                         locations.push(location);
                         currentIndex = locations.length - 1;
                     } else {
-                        // Replace an existing location.
+                        // Replace an existing location
                         locations[currentIndex] = location;
                         currentIndex = (currentIndex + 1) % locationLimit;
-                        // Add a delay before trying again.
+                        // Add a delay before trying again
                         await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5 + 1) * 1000));
                     }
                     parentPort.postMessage({ status: 'updated', locations, index: currentIndex });
-                    saveLocationsToFile();
                 }
                 attempts = 0;
             } else {
@@ -394,10 +391,6 @@ async function updateLocations() {
             process.exit(1);
         }
     }
-}
-
-function saveLocationsToFile() {
-    fs.writeFileSync('locations.json', JSON.stringify(locations));
 }
 
 // Start updating locations.
