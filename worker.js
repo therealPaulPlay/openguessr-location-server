@@ -13,11 +13,11 @@ const capitalsJson = JSON.parse(fs.readFileSync('./json/capital-city-names.json'
 const CAPITAL_SELECTION_PROBABILITY = 0.20;
 const CITY_SELECTION_PROBABILITY = 0.40;
 
-// Reject 50% of Trekker coverage (They typically lack a road description)
+// Reject 50% of Trekker coverage (Typically lack a road description)
 const TREKKER_REJECTION_PROBABILITY = 0.5;
 
 // Reject 98% of unofficial panoramas (Copyright is not Google, pano IDs start with CAo)
-// Most unofficial panoramas don't provide a heading property, but some actually do (and rarely some official ones don't) -> not an indicator
+// Most unofficial panoramas don't provide a heading property, but some actually do (and rarely some official ones don't)
 const UNOFFICIAL_REJECTION_PROBABILITY = 0.98;
 
 // Street View search radius in meters
