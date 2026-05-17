@@ -16,9 +16,9 @@ const CITY_SELECTION_PROBABILITY = 0.40;
 // Reject 50% of Trekker coverage (Typically lack a road description)
 const TREKKER_REJECTION_PROBABILITY = 0.5;
 
-// Reject 98% of unofficial panoramas (Copyright is not Google, pano IDs start with CAo)
+// Reject 99% of unofficial panoramas (Copyright is not Google, pano IDs start with CAo)
 // Most unofficial panoramas don't provide a heading property, but some actually do (and rarely some official ones don't)
-const UNOFFICIAL_REJECTION_PROBABILITY = 0.98;
+const UNOFFICIAL_REJECTION_PROBABILITY = 0.99;
 
 // Street View search radius in meters
 // Higher radii lead to more obscure locations and more photospheres, lower values make finding locs slow
@@ -159,7 +159,7 @@ async function launchBrowser() {
 
                                 // Deprioritize unofficial coverage
                                 const copyright = data.copyright || "";
-                                if (!/google/i.test(copyright) && Math.random() < unofficialRejectionProbability) {
+                                if (!/^©\\s*\\d+\\s+Google\\b/i.test(copyright) && Math.random() < unofficialRejectionProbability) {
                                     reject("UNOFFICIAL");
                                     return;
                                 }
