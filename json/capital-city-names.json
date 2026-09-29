@@ -252,10 +252,10 @@
     },
     {
         "country": "Burundi",
-        "city": "Bujumbura",
+        "city": "Gitega",
         "coordinates": {
-            "lat": -3.38193,
-            "lon": 29.36142
+            "lat": -3.42833,
+            "lon": 29.925
         }
     },
     {
@@ -986,10 +986,10 @@
     },
     {
         "country": "Malta",
-        "city": "Birkirkara",
+        "city": "Valletta",
         "coordinates": {
-            "lat": 35.89722,
-            "lon": 14.46111
+            "lat": 35.89833,
+            "lon": 14.5125
         }
     },
     {
@@ -1252,8 +1252,8 @@
         "country": "Panama",
         "city": "Panama City",
         "coordinates": {
-            "lat": 30.15946,
-            "lon": -85.65983
+            "lat": 8.97111,
+            "lon": -79.53472
         }
     },
     {
