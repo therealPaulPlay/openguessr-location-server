@@ -16,12 +16,8 @@ const CITY_SELECTION_PROBABILITY = 0.40;
 // Reject 50% of Trekker coverage (Typically lack a road description)
 const TREKKER_REJECTION_PROBABILITY = 0.5;
 
-// Reject 99% of unofficial panoramas (Copyright is not Google, pano IDs start with CAo)
-// Most unofficial panoramas don't provide a heading property, but some actually do (and rarely some official ones don't)
-const UNOFFICIAL_REJECTION_PROBABILITY = 0.99;
-
 // Street View search radius in meters
-// Higher radii lead to more obscure locations and more photospheres, lower values make finding locs slow
+// Higher radii lead to more obscure locations and more photospheres/obscure coverage, lower values make finding locs slow
 const SEARCH_RADIUS = 5000;
 
 const locationLimit = workerData.locationLimit;
@@ -134,7 +130,6 @@ async function launchBrowser() {
                 const preference = "NEAREST";
                 const searchRadius = ${SEARCH_RADIUS};
                 const trekkerRejectionProbability = ${TREKKER_REJECTION_PROBABILITY};
-                const unofficialRejectionProbability = ${UNOFFICIAL_REJECTION_PROBABILITY};
 
                 // Find Street View panorama at given coordinates
                 function getLocationData(latitude, longitude) {
@@ -144,23 +139,17 @@ async function launchBrowser() {
                             location: { lat: latitude, lng: longitude },
                             preference: google.maps.StreetViewPreference[preference],
                             radius: searchRadius,
-                            sources: [google.maps.StreetViewSource.OUTDOOR]
+                            // Sources works as an inner join, where adding Google as a source restricts all outdoor ones to Google-only
+                            // Non-Google can be recognized by copyright != Google and pano IDs starting with CAo
+                            sources: [google.maps.StreetViewSource.GOOGLE, google.maps.StreetViewSource.OUTDOOR]
                         }, (data, status) => {
                             if (status === "OK") {
                                 const location = data.location.latLng;
                                 const firstLink = data.links && data.links[0];
 
-                                // If no description, randomly reject (Trekker panorama)
-                                // Note that seemingly all unofficial coverage also lacks the description
+                                // If no description, randomly reject (Trekker panorama) (unofficial coverage also usually lacks that description)
                                 if (firstLink && !firstLink.description && Math.random() < trekkerRejectionProbability) {
                                     reject("TREKKER");
-                                    return;
-                                }
-
-                                // Deprioritize unofficial coverage
-                                const copyright = data.copyright || "";
-                                if (!/^©\\s*\\d+\\s+Google\\b/i.test(copyright) && Math.random() < unofficialRejectionProbability) {
-                                    reject("UNOFFICIAL");
                                     return;
                                 }
 
@@ -191,7 +180,7 @@ async function launchBrowser() {
                     try {
                         return await getLocationData(lat, lng);
                     } catch (error) {
-                        if (error === "ZERO_RESULTS" || error === "TREKKER" || error === "UNOFFICIAL" || error === "GEN_1") {
+                        if (error === "ZERO_RESULTS" || error === "TREKKER" || error === "GEN_1") {
                             return null;
                         }
                         throw error;
