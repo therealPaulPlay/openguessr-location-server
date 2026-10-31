@@ -1,5 +1,4 @@
-# Use the official Node.js image (lightweight alpine)
-FROM node:22-bullseye-slim
+FROM node:24-bookworm-slim
 
 WORKDIR /usr/src/app
 
